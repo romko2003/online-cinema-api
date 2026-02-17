@@ -29,10 +29,17 @@ from app.services.accounts import (
     request_password_reset,
 )
 
-router = APIRouter(prefix="/accounts", tags=["Accounts"])
+router = APIRouter(
+    prefix="/accounts",
+    tags=["Accounts"],
+)
 
 
-@router.post("/register", response_model=MessageResponse)
+@router.post(
+    "/register",
+    response_model=MessageResponse,
+    summary="Register a new user",
+)
 async def register(
     payload: UserRegistrationRequest,
     db: AsyncSession = Depends(get_db),
@@ -46,7 +53,11 @@ async def register(
     return MessageResponse(message="Activation email sent")
 
 
-@router.get("/activate", response_model=MessageResponse)
+@router.get(
+    "/activate",
+    response_model=MessageResponse,
+    summary="Activate user account using activation token",
+)
 async def activate(
     token: str,
     db: AsyncSession = Depends(get_db),
@@ -59,7 +70,11 @@ async def activate(
     return MessageResponse(message="Account activated")
 
 
-@router.post("/login", response_model=TokenPairResponse)
+@router.post(
+    "/login",
+    response_model=TokenPairResponse,
+    summary="Login and receive access/refresh tokens",
+)
 async def login(
     payload: UserLoginRequest,
     db: AsyncSession = Depends(get_db),
@@ -72,7 +87,11 @@ async def login(
     return TokenPairResponse(access_token=access, refresh_token=refresh)
 
 
-@router.post("/refresh", response_model=TokenPairResponse)
+@router.post(
+    "/refresh",
+    response_model=TokenPairResponse,
+    summary="Refresh access token using refresh token",
+)
 async def refresh(
     payload: RefreshTokenRequest,
     db: AsyncSession = Depends(get_db),
@@ -85,7 +104,11 @@ async def refresh(
     return TokenPairResponse(access_token=access, refresh_token=refresh_token)
 
 
-@router.post("/logout", response_model=MessageResponse)
+@router.post(
+    "/logout",
+    response_model=MessageResponse,
+    summary="Logout and revoke refresh token",
+)
 async def logout(
     payload: LogoutRequest,
     db: AsyncSession = Depends(get_db),
@@ -94,21 +117,34 @@ async def logout(
     return MessageResponse(message="Logged out")
 
 
-@router.post("/change-password", response_model=MessageResponse)
+@router.post(
+    "/change-password",
+    response_model=MessageResponse,
+    summary="Change password for current user",
+)
 async def change_password_endpoint(
     payload: ChangePasswordRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> MessageResponse:
     try:
-        await change_password(db, current_user, payload.old_password, payload.new_password)
+        await change_password(
+            db,
+            current_user,
+            payload.old_password,
+            payload.new_password,
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     return MessageResponse(message="Password changed")
 
 
-@router.post("/forgot-password", response_model=MessageResponse)
+@router.post(
+    "/forgot-password",
+    response_model=MessageResponse,
+    summary="Request password reset link",
+)
 async def forgot_password(
     payload: PasswordResetRequest,
     db: AsyncSession = Depends(get_db),
@@ -123,7 +159,11 @@ async def forgot_password(
     )
 
 
-@router.post("/reset-password", response_model=MessageResponse)
+@router.post(
+    "/reset-password",
+    response_model=MessageResponse,
+    summary="Reset password using reset token",
+)
 async def reset_password(
     payload: PasswordResetConfirmRequest,
     db: AsyncSession = Depends(get_db),
