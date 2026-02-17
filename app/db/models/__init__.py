@@ -8,6 +8,8 @@ from app.db.models.accounts import (
 )
 from app.db.models.cart import Cart, CartItem
 from app.db.models.movies import Certification, Director, Genre, Movie, Star
+from app.db.models.orders import Order, OrderItem, OrderStatusEnum
+from app.db.models.payments import Payment, PaymentItem, PaymentStatusEnum
 
 __all__ = [
     # accounts
@@ -26,4 +28,12 @@ __all__ = [
     # cart
     "Cart",
     "CartItem",
+    # orders
+    "Order",
+    "OrderItem",
+    "OrderStatusEnum",
+    # payments
+    "Payment",
+    "PaymentItem",
+    "PaymentStatusEnum",
 ]
