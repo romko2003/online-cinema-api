@@ -32,5 +32,14 @@ class ChangePasswordRequest(BaseModel):
     new_password: str
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str
+    new_password: str
+
+
 class MessageResponse(BaseModel):
     message: str
