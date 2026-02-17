@@ -1,13 +1,8 @@
-from __future__ import annotations
-
 from fastapi import APIRouter
 
+from app.api.v1.accounts import router as accounts_router
+
 router = APIRouter()
-
-# Here we will plug accounts/movies/cart/orders/payments routers later.
-# Example:
-# router.include_router(accounts.router)
-
+router.include_router(accounts_router)
 
 api_v1_router = router
-
