@@ -1,16 +1,36 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.accounts import ActivationToken, User, UserGroup, UserGroupEnum
-from app.core.security import hash_password
-
+from app.core.security import (
+    create_access_token,
+    create_refresh_token,
+    hash_password,
+    validate_password_complexity,
+    verify_password,
+)
+from app.db.models.accounts import (
+    ActivationToken,
+    RefreshToken,
+    User,
+    UserGroup,
+    UserGroupEnum,
+)
 
 ACTIVATION_TTL_HOURS = 24
+
+
+def _utcnow_naive() -> datetime:
+    # DB in this stage stores naive DateTime; keep consistent across models/migrations.
+    return datetime.utcnow()
+
+
+def _utcnow_aware() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 async def register_user(
@@ -18,11 +38,12 @@ async def register_user(
     email: str,
     password: str,
 ) -> str:
-    # check existing
     result = await session.execute(select(User).where(User.email == email))
     existing = result.scalar_one_or_none()
     if existing:
         raise ValueError("User already exists")
+
+    validate_password_complexity(password)
 
     group_result = await session.execute(
         select(UserGroup).where(UserGroup.name == UserGroupEnum.USER)
@@ -39,7 +60,7 @@ async def register_user(
     await session.flush()
 
     token_str = secrets.token_urlsafe(32)
-    expires_at = datetime.utcnow() + timedelta(hours=ACTIVATION_TTL_HOURS)
+    expires_at = _utcnow_naive() + timedelta(hours=ACTIVATION_TTL_HOURS)
 
     token = ActivationToken(
         user_id=user.id,
@@ -61,11 +82,98 @@ async def activate_user(session: AsyncSession, token_str: str) -> None:
     if not token:
         raise ValueError("Invalid token")
 
-    if token.expires_at < datetime.utcnow():
+    if token.expires_at < _utcnow_naive():
         raise ValueError("Token expired")
 
     user = token.user
     user.is_active = True
 
     await session.delete(token)
+    await session.commit()
+
+
+async def login_user(session: AsyncSession, email: str, password: str) -> tuple[str, str]:
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        raise ValueError("Invalid credentials")
+
+    if not user.is_active:
+        raise ValueError("Account is not active")
+
+    if not verify_password(password, user.hashed_password):
+        raise ValueError("Invalid credentials")
+
+    access = create_access_token(subject=user.email)
+    refresh, refresh_exp = create_refresh_token(subject=user.email)
+
+    # persist refresh token in DB (revocable)
+    session.add(
+        RefreshToken(
+            user_id=user.id,
+            token=refresh,
+            expires_at=refresh_exp.replace(tzinfo=None),  # keep naive for DB in this stage
+        )
+    )
+    await session.commit()
+    return access, refresh
+
+
+async def refresh_access_token(session: AsyncSession, refresh_token: str) -> tuple[str, str]:
+    # Must exist in DB and be not expired
+    result = await session.execute(
+        select(RefreshToken).where(RefreshToken.token == refresh_token)
+    )
+    stored = result.scalar_one_or_none()
+    if stored is None:
+        raise ValueError("Invalid refresh token")
+
+    if stored.expires_at < _utcnow_naive():
+        # remove expired token
+        await session.delete(stored)
+        await session.commit()
+        raise ValueError("Refresh token expired")
+
+    user = stored.user
+    if not user.is_active:
+        raise ValueError("Account is not active")
+
+    # Rotate refresh token for better security
+    await session.delete(stored)
+    await session.flush()
+
+    new_access = create_access_token(subject=user.email)
+    new_refresh, new_refresh_exp = create_refresh_token(subject=user.email)
+
+    session.add(
+        RefreshToken(
+            user_id=user.id,
+            token=new_refresh,
+            expires_at=new_refresh_exp.replace(tzinfo=None),
+        )
+    )
+    await session.commit()
+
+    return new_access, new_refresh
+
+
+async def logout_user(session: AsyncSession, refresh_token: str) -> None:
+    # Delete refresh token from DB → cannot be used again
+    await session.execute(delete(RefreshToken).where(RefreshToken.token == refresh_token))
+    await session.commit()
+
+
+async def change_password(
+    session: AsyncSession,
+    user: User,
+    old_password: str,
+    new_password: str,
+) -> None:
+    if not verify_password(old_password, user.hashed_password):
+        raise ValueError("Old password is incorrect")
+
+    validate_password_complexity(new_password)
+
+    user.hashed_password = hash_password(new_password)
     await session.commit()
