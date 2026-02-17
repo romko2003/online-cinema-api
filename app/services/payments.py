@@ -8,12 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
-from app.db.models.orders import Order, OrderItem, OrderStatusEnum
+from app.db.models.orders import Order, OrderStatusEnum
 from app.db.models.payments import Payment, PaymentItem, PaymentStatusEnum
 
 
 def _money_to_cents(amount: Decimal) -> int:
-    # Stripe expects integer cents
     return int((amount * Decimal("100")).quantize(Decimal("1")))
 
 
@@ -23,9 +22,6 @@ async def create_stripe_checkout_session(
     user_id: int,
     order_id: int,
 ) -> str:
-    """
-    Creates a Stripe Checkout Session and returns the hosted checkout URL.
-    """
     stmt = (
         select(Order)
         .where(and_(Order.id == order_id, Order.user_id == user_id))
@@ -40,7 +36,7 @@ async def create_stripe_checkout_session(
     if order.status != OrderStatusEnum.pending:
         raise ValueError("Only pending orders can be paid")
 
-    # Revalidate totals before payment (important requirement)
+    # Revalidate totals before payment
     total = Decimal("0.00")
     for item in order.items:
         total += Decimal(str(item.price_at_order))
@@ -50,12 +46,10 @@ async def create_stripe_checkout_session(
 
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
-    # minimal Checkout Session: single line item for the total
     checkout = stripe.checkout.Session.create(
         mode="payment",
         success_url=settings.STRIPE_SUCCESS_URL,
         cancel_url=settings.STRIPE_CANCEL_URL,
-        currency=settings.STRIPE_CURRENCY,
         line_items=[
             {
                 "price_data": {
@@ -83,9 +77,8 @@ async def _mark_order_paid_and_create_payment(
     external_payment_id: str | None,
     amount: Decimal,
 ) -> None:
-    """
-    Idempotent-ish: if order already paid, do nothing.
-    """
+    from app.db.models.orders import OrderItem
+
     stmt = (
         select(Order)
         .where(and_(Order.id == order_id, Order.user_id == user_id))
@@ -102,7 +95,6 @@ async def _mark_order_paid_and_create_payment(
     if order.status != OrderStatusEnum.pending:
         return
 
-    # create Payment record
     payment = Payment(
         user_id=user_id,
         order_id=order_id,
@@ -113,19 +105,16 @@ async def _mark_order_paid_and_create_payment(
     session.add(payment)
     await session.flush()
 
-    # create PaymentItems (mirror order items)
     for oi in order.items:
         session.add(
             PaymentItem(
                 payment_id=payment.id,
-                order_item_id=oi.id,
+                order_item_id=oi.id,  # OrderItem.id
                 price_at_payment=oi.price_at_order,
             )
         )
 
-    # mark paid
     order.status = OrderStatusEnum.paid
-
     await session.commit()
 
 
@@ -135,10 +124,6 @@ async def process_stripe_webhook(
     payload: bytes,
     signature: str,
 ) -> tuple[str, int]:
-    """
-    Verifies Stripe webhook signature and processes events.
-    Returns (message, http_status_code).
-    """
     stripe.api_key = settings.STRIPE_SECRET_KEY
 
     try:
@@ -159,7 +144,6 @@ async def process_stripe_webhook(
         order_id = int(metadata.get("order_id", "0") or "0")
         user_id = int(metadata.get("user_id", "0") or "0")
 
-        # Stripe amounts are in cents for session; prefer amount_total if present
         amount_total = data.get("amount_total")
         amount = Decimal("0.00")
         if isinstance(amount_total, int):
@@ -178,5 +162,4 @@ async def process_stripe_webhook(
 
         return "Processed", 200
 
-    # optional: handle refunds / cancellations in later iterations
     return "Ignored", 200

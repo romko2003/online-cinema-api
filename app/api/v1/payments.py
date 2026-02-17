@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from starlette.concurrency import run_in_threadpool
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -32,26 +31,10 @@ async def create_checkout_session(
     db: AsyncSession = Depends(get_db),
 ) -> CreateCheckoutSessionResponse:
     try:
-        # Stripe SDK is sync → run this whole operation in a threadpool
-        checkout_url = await run_in_threadpool(
-            lambda: None
-        )
-        checkout_url = await run_in_threadpool(
-            lambda: payments_service  # keep lambda small; actual call below
-        )
-
-        checkout_url = await run_in_threadpool(
-            lambda: None
-        )
-        # Real call (still sync inside service) executed in threadpool:
-        checkout_url = await run_in_threadpool(
-            lambda: __import__("asyncio").run(
-                payments_service.create_stripe_checkout_session(
-                    db,
-                    user_id=current_user.id,
-                    order_id=payload.order_id,
-                )
-            )
+        checkout_url = await payments_service.create_stripe_checkout_session(
+            db,
+            user_id=current_user.id,
+            order_id=payload.order_id,
         )
     except ValueError as e:
         msg = str(e).lower()
@@ -59,7 +42,7 @@ async def create_checkout_session(
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to create Stripe checkout session")
 
-    return CreateCheckoutSessionResponse(checkout_url=str(checkout_url))
+    return CreateCheckoutSessionResponse(checkout_url=checkout_url)
 
 
 @router.post("/webhook", response_model=dict)
