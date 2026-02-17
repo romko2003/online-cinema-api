@@ -1,68 +1,41 @@
 from __future__ import annotations
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.core.security import decode_token
-from app.db.models.accounts import User, UserGroup, UserGroupEnum
+from app.core.security.jwt import decode_access_token
+from app.db.models.accounts import User
+from app.db.repositories import users as users_repo
 from app.db.session import get_db
 
-bearer_scheme = HTTPBearer(auto_error=False)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/accounts/login")
 
 
 async def get_current_user(
-    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
-    if creds is None or not creds.credentials:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
-
-    try:
-        payload = decode_token(creds.credentials)
-    except ValueError:
+    payload = decode_access_token(token)
+    user_id = payload.get("sub")
+    if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
-    if payload.get("type") != "access":
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
-
-    subject = payload.get("sub")
-    if not subject:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
-
-    stmt = (
-        select(User)
-        .join(UserGroup, User.group_id == UserGroup.id)
-        .where(User.email == subject)
-        .options(selectinload(User.group))
-    )
-    result = await db.execute(stmt)
-    user = result.scalar_one_or_none()
-
+    user = await users_repo.get_user_by_id(db, int(user_id))
     if user is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is not active")
-
     return user
 
 
-def require_moderator(user: User = Depends(get_current_user)) -> User:
-    if user.group.name not in (UserGroupEnum.MODERATOR, UserGroupEnum.ADMIN):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Moderator permissions required",
-        )
-    return user
+async def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    # group name stored as enum string
+    if getattr(current_user, "group", None) is not None:
+        group_name = getattr(current_user.group, "name", None)
+    else:
+        group_name = None
 
+    if str(group_name) != "ADMIN":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
 
-def require_admin(user: User = Depends(get_current_user)) -> User:
-    if user.group.name != UserGroupEnum.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin permissions required",
-        )
-    return user
+    return current_user
