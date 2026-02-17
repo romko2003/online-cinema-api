@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["dev", "main"]
+  push:
+    branches: ["dev", "main"]
+
+jobs:
+  quality:
+    name: Lint / Typecheck / Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cinema
+          POSTGRES_USER: cinema
+          POSTGRES_PASSWORD: cinema
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U cinema -d cinema"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+
+    env:
+      ENV: test
+      DATABASE_URL: postgresql+asyncpg://cinema:cinema@localhost:5432/cinema
+      DB_ECHO: "false"
+
+      JWT_SECRET_KEY: test-secret
+      JWT_ALGORITHM: HS256
+      JWT_ACCESS_TTL_MINUTES: "15"
+      JWT_REFRESH_TTL_DAYS: "14"
+
+      CELERY_BROKER_URL: redis://localhost:6379/0
+      CELERY_RESULT_BACKEND: redis://localhost:6379/1
+
+      SMTP_HOST: localhost
+      SMTP_PORT: "1025"
+      SMTP_USE_TLS: "false"
+      EMAIL_FROM: no-reply@cinema.local
+
+      STRIPE_SECRET_KEY: sk_test_dummy
+      STRIPE_WEBHOOK_SECRET: whsec_dummy
+      STRIPE_CURRENCY: usd
+      STRIPE_SUCCESS_URL: http://localhost:8000/success
+      STRIPE_CANCEL_URL: http://localhost:8000/cancel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Poetry
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+
+      - name: Install dependencies
+        run: |
+          poetry config virtualenvs.create false
+          poetry install --no-interaction
+
+      - name: Ruff (lint)
+        run: ruff check .
+
+      - name: Ruff (format check)
+        run: ruff format --check .
+
+      - name: Mypy (type check)
+        run: mypy app
+
+      - name: Run tests (pytest + coverage)
+        run: |
+          pytest -q --maxfail=1 --disable-warnings --cov=app --cov-report=term-missing
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: .coverage
+          if-no-files-found: ignore
