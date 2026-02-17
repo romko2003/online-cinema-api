@@ -3,14 +3,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.deps import get_current_user, require_admin
-from app.core.emails import send_payment_confirmation_email
 from app.db.models.accounts import User
 from app.db.models.payments import Payment
 from app.db.session import get_db
@@ -33,14 +32,26 @@ async def create_checkout_session(
     db: AsyncSession = Depends(get_db),
 ) -> CreateCheckoutSessionResponse:
     try:
-        # stripe SDK is sync → run in threadpool
+        # Stripe SDK is sync → run this whole operation in a threadpool
         checkout_url = await run_in_threadpool(
             lambda: None
         )
-        checkout_url = await payments_service.create_stripe_checkout_session(
-            db,
-            user_id=current_user.id,
-            order_id=payload.order_id,
+        checkout_url = await run_in_threadpool(
+            lambda: payments_service  # keep lambda small; actual call below
+        )
+
+        checkout_url = await run_in_threadpool(
+            lambda: None
+        )
+        # Real call (still sync inside service) executed in threadpool:
+        checkout_url = await run_in_threadpool(
+            lambda: __import__("asyncio").run(
+                payments_service.create_stripe_checkout_session(
+                    db,
+                    user_id=current_user.id,
+                    order_id=payload.order_id,
+                )
+            )
         )
     except ValueError as e:
         msg = str(e).lower()
@@ -48,7 +59,7 @@ async def create_checkout_session(
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to create Stripe checkout session")
 
-    return CreateCheckoutSessionResponse(checkout_url=checkout_url)
+    return CreateCheckoutSessionResponse(checkout_url=str(checkout_url))
 
 
 @router.post("/webhook", response_model=dict)
@@ -68,13 +79,7 @@ async def stripe_webhook(
         signature=stripe_signature,
     )
 
-    # send confirmation email after marking paid (best-effort)
-    if code == 200 and message == "Processed":
-        # We can’t reliably know the email here without re-fetching payment/order.
-        # In production we'd enqueue background job. For portfolio: keep minimal & safe.
-        pass
-
-    return {"message": message}
+    return {"message": message, "status": code}
 
 
 def _to_response(p: Payment) -> PaymentResponse:
