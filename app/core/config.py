@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     JWT_ACCESS_TTL_MINUTES: int = 15
     JWT_REFRESH_TTL_DAYS: int = 14
 
+    # Stripe
+    STRIPE_SECRET_KEY: str = "change-me"
+    STRIPE_WEBHOOK_SECRET: str = "change-me"
+    STRIPE_CURRENCY: str = "usd"
+    STRIPE_SUCCESS_URL: str = "http://localhost:8000/success"
+    STRIPE_CANCEL_URL: str = "http://localhost:8000/cancel"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_ignore_empty=True,
