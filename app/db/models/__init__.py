@@ -1,5 +1,6 @@
 from app.db.models.accounts import (
     ActivationToken,
+    PasswordResetToken,
     RefreshToken,
     User,
     UserGroup,
@@ -12,4 +13,5 @@ __all__ = [
     "UserProfile",
     "ActivationToken",
     "RefreshToken",
+    "PasswordResetToken",
 ]
