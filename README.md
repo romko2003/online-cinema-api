@@ -1,244 +1,222 @@
-# 🎬 Online Cinema API
+# Online Cinema API 🎬 (FastAPI)
 
-![Python](https://img.shields.io/badge/Python-3.12-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-async-green)
-![Docker](https://img.shields.io/badge/Docker-ready-blue)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
+A portfolio-ready backend for an online cinema platform: authentication, movie catalog, cart → orders → payments (Stripe), background jobs, and a clean layered architecture.
 
-A **portfolio-ready backend API** for an online cinema platform built with **FastAPI**, featuring:
+## ✨ Highlights
 
-- JWT authentication (access + refresh tokens)
-- Movies catalog with filtering and sorting
-- Shopping cart and order workflow
-- Stripe payments
-- Celery background jobs
-- Dockerized environment
-- CI/CD with GitHub Actions
-
----
-
-## ✨ Features
-
-### 🔐 Accounts
-- Registration with email activation
-- Password reset via email
-- JWT authentication (access + refresh tokens)
-- User roles:
-  - **User**
-  - **Moderator**
-  - **Admin**
-
----
-
-### 🎬 Movies
-- Paginated catalog
-- Filtering by:
-  - year
-  - IMDb rating
-  - genre
-  - director
-  - star
-- Sorting:
-  - price
-  - year
-  - votes
-- Moderator CRUD:
-  - movies
-  - genres
-  - stars
-  - directors
-  - certifications
+- **FastAPI + Async SQLAlchemy**
+- **JWT auth (access + refresh)** + logout (revokes refresh token)
+- **Email activation** (activation tokens expire) + password reset tokens
+- **Roles & permissions**: USER / MODERATOR / ADMIN
+- **Movies catalog**:
+  - pagination, search, filters
+  - sorting via **Enums** (Swagger dropdowns)
+  - moderator CRUD for movies and dictionary entities
+- **Cart**:
+  - add/remove/clear
+  - prevents duplicates
+  - admin can view user carts (analysis/troubleshooting)
+- **Orders**:
+  - create from cart
+  - list/get
+  - cancel (before payment)
+- **Payments (Stripe)**:
+  - create checkout session
+  - webhook handler
+  - payments history
+  - admin filters
+- **Layered architecture**:
+  - `api` → `services` → `repositories` → `db/models`
+  - association tables migrated to full-fledged models (when needed)
+- **Tests (pytest)** for main flows and edge cases
+- Docker-ready setup (DB/Redis/Celery/etc. if enabled in your compose)
 
 ---
 
-### 🛒 Cart
-- One cart per user
-- Add/remove movies
-- Prevent duplicates
-- Clear cart
-- Admin cart inspection
+## 🧱 Tech Stack
+
+- **FastAPI**
+- **SQLAlchemy (async)**
+- **Alembic migrations**
+- **Pydantic**
+- **Pytest**
+- **Stripe** (checkout + webhook)
+- (optional) Celery + Redis, MinIO, etc. depending on your docker-compose
 
 ---
 
-### 📦 Orders
-- Create order from cart
-- Cancel order
-- Order history
-- Stored prices at order time
 
----
+🚀 Quickstart (Local)
+1) Create .env
+Create a .env in the project root.
 
-### 💳 Payments
-- Stripe checkout sessions
-- Webhook-based payment confirmation
-- Payment history
-- Admin filters
+Example (adjust values):
 
----
+# App
+APP_NAME=online-cinema
+ENV=local
+DEBUG=true
 
-## 🧱 Architecture
+# DB
+DATABASE_URL=postgresql+asyncpg://cinema:cinema@localhost:5432/cinema
 
-```mermaid
-flowchart LR
-    Client -->|HTTP| FastAPI
-    FastAPI --> Postgres[(PostgreSQL)]
-    FastAPI --> Redis[(Redis)]
-    FastAPI --> MinIO[(MinIO S3)]
-    FastAPI --> Stripe[(Stripe API)]
+# JWT
+JWT_SECRET_KEY=change-me
+JWT_ACCESS_TOKEN_TTL_MINUTES=15
+JWT_REFRESH_TOKEN_TTL_DAYS=14
 
-    Celery --> Redis
-    Celery --> Postgres
-🗂 Project Structure
-app/
- ├── api/
- │   └── v1/
- │       ├── accounts.py
- │       ├── movies.py
- │       ├── cart.py
- │       ├── orders.py
- │       ├── payments.py
- │       └── router.py
- │
- ├── core/
- │   ├── config.py
- │   ├── security.py
- │   └── emails.py
- │
- ├── db/
- │   ├── models/
- │   └── session.py
- │
- ├── schemas/
- ├── services/
- ├── workers/
- └── main.py
-🚀 Quickstart (Docker)
-1. Clone the repository
-git clone https://github.com/your-username/online-cinema-api.git
-cd online-cinema-api
-2. Create .env
-Example:
+# Emails (dev)
+SMTP_HOST=localhost
+SMTP_PORT=1025
+SMTP_USER=
+SMTP_PASSWORD=
+EMAIL_FROM=no-reply@example.com
 
-POSTGRES_DB=cinema
-POSTGRES_USER=cinema
-POSTGRES_PASSWORD=cinema
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-
-SECRET_KEY=supersecret
-JWT_ALGORITHM=HS256
-
+# Stripe (dev)
 STRIPE_SECRET_KEY=sk_test_xxx
 STRIPE_WEBHOOK_SECRET=whsec_xxx
-3. Run with Docker Compose
+2) Install dependencies
+If you use Poetry:
+
+poetry install
+poetry shell
+Or if you use pip:
+
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+3) Run migrations
+alembic upgrade head
+4) Start API
+uvicorn app.main:app --reload
+Open Swagger:
+
+http://127.0.0.1:8000/docs
+
+🐳 Docker (Typical)
+If you have docker-compose configured:
+
 docker compose up --build
-Services:
+Then run migrations inside the API container if needed:
 
-Service	URL
-API	http://localhost:8000
-MailHog	http://localhost:8025
-MinIO	http://localhost:9001
-📚 API Documentation
-Docs are protected.
-
-Steps:
-
-Register user:
-
+docker compose exec api alembic upgrade head
+🔐 API Overview (Main Endpoints)
+Accounts
 POST /api/v1/accounts/register
-Activate account via email.
 
-Login:
+GET /api/v1/accounts/activate?token=...
 
 POST /api/v1/accounts/login
-Use access token in Swagger:
 
-Authorization: Bearer <access_token>
-Open:
+POST /api/v1/accounts/refresh
 
-http://localhost:8000/docs
-🔁 Main User Flow
-Register
+POST /api/v1/accounts/logout
 
-Activate account
+POST /api/v1/accounts/change-password
 
-Login
+POST /api/v1/accounts/forgot-password
 
-Browse movies
+POST /api/v1/accounts/reset-password
 
-Add movies to cart
+Movies
+GET /api/v1/movies
 
-Create order
+GET /api/v1/movies/{uuid}
 
-Pay via Stripe
+Moderator:
 
-Receive confirmation
+POST /api/v1/movies
 
-🧪 Testing
-Run tests:
+PUT /api/v1/movies/{id}
 
-pytest
-CI pipeline includes:
+DELETE /api/v1/movies/{id}
 
-flake8
+dictionaries: genres/stars/directors/certifications
 
-mypy
+Cart
+GET /api/v1/cart
 
-pytest
+POST /api/v1/cart/add
 
-coverage
+POST /api/v1/cart/remove
 
-⚙️ Tech Stack
-Backend: FastAPI, SQLAlchemy (async)
+POST /api/v1/cart/clear
 
-DB: PostgreSQL
+Admin:
 
-Auth: JWT
+GET /api/v1/cart/admin/{user_id}
 
-Payments: Stripe
+Orders
+POST /api/v1/orders
 
-Storage: MinIO (S3-compatible)
+GET /api/v1/orders
 
-Background jobs: Celery + Redis
+GET /api/v1/orders/{id}
 
-Containerization: Docker, Docker Compose
+POST /api/v1/orders/{id}/cancel
 
-Dependency management: Poetry
+Payments
+POST /api/v1/payments/checkout-session
 
-CI/CD: GitHub Actions
+POST /api/v1/payments/webhook
 
-📄 License
-MIT License.
+GET /api/v1/payments
 
+Admin:
 
----
+GET /api/v1/payments/admin
 
-## PR Description (GitHub)
+✅ Tests
+Run:
 
-**Title**
-Add final portfolio README with architecture diagram and quickstart
+pytest -q
 
+## 📁 Project Structure (high level)
 
-**Description**
-This PR adds a final, portfolio-ready README.
-
-Main additions:
-
-Project overview with badges
-
-Feature breakdown by domain (Accounts, Movies, Cart, Orders, Payments)
-
-Architecture diagram (Mermaid)
-
-Project structure section
-
-Docker quickstart guide
-
-API documentation usage steps
-
-Main user flow
-
-Tech stack section
-
-This finalizes the project for portfolio presentation.
+```text
+app/
+  api/
+    deps.py
+    v1/
+      accounts.py
+      movies.py
+      cart.py
+      orders.py
+      payments.py
+      router.py
+  core/
+    enums.py
+    emails.py
+    security/...
+  db/
+    models/
+      accounts.py
+      movies.py
+      cart.py
+      orders.py
+      payments.py
+    migrations/
+      env.py
+      versions/
+  repositories/
+    accounts.py
+    movies.py
+    cart.py
+    orders.py
+    payments.py
+  schemas/
+    accounts.py
+    movies.py
+    cart.py
+    orders.py
+    payments.py
+  services/
+    accounts.py
+    movies.py
+    cart.py
+    orders.py
+    payments.py
+  main.py
+tests/
+  test_cart_orders_payments_flow.py
+  test_admin_and_edge_cases.py
