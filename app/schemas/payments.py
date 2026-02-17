@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+from app.core.enums import PaymentStatus
 
 
 class CreateCheckoutSessionRequest(BaseModel):
@@ -33,12 +34,8 @@ class PaymentsListResponse(BaseModel):
     items: list[PaymentResponse]
 
 
-# -------------------------
-# NEW: Admin query schema
-# -------------------------
-
 class PaymentsAdminQuery(BaseModel):
     user_id: int | None = None
-    status_filter: Literal["successful", "canceled", "refunded"] | None = None
+    status_filter: PaymentStatus | None = None
     date_from: str | None = None
     date_to: str | None = None

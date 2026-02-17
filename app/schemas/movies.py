@@ -5,10 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.core.enums import MovieSortField, SortOrder
 
-# -------------------------
-# Core DTOs (already used)
-# -------------------------
 
 class GenreBase(BaseModel):
     name: str
@@ -117,7 +115,7 @@ class PaginatedMoviesResponse(BaseModel):
 
 
 # -------------------------
-# NEW: Query schema
+# Query schema with enums
 # -------------------------
 
 class MoviesListQuery(BaseModel):
@@ -134,6 +132,5 @@ class MoviesListQuery(BaseModel):
     director_id: int | None = None
     star_id: int | None = None
 
-    # NOTE: regex validation is removed in PR #21 (Enums).
-    sort_by: str = Field(default="year")
-    order: str = Field(default="desc")
+    sort_by: MovieSortField = MovieSortField.year
+    order: SortOrder = SortOrder.desc
