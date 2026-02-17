@@ -15,6 +15,7 @@ from app.core.security import (
 )
 from app.db.models.accounts import (
     ActivationToken,
+    PasswordResetToken,
     RefreshToken,
     User,
     UserGroup,
@@ -22,15 +23,12 @@ from app.db.models.accounts import (
 )
 
 ACTIVATION_TTL_HOURS = 24
+PASSWORD_RESET_TTL_HOURS = 2
 
 
 def _utcnow_naive() -> datetime:
-    # DB in this stage stores naive DateTime; keep consistent across models/migrations.
+    # DB at this stage stores naive DateTime; keep consistent across models/migrations.
     return datetime.utcnow()
-
-
-def _utcnow_aware() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 async def register_user(
@@ -108,12 +106,11 @@ async def login_user(session: AsyncSession, email: str, password: str) -> tuple[
     access = create_access_token(subject=user.email)
     refresh, refresh_exp = create_refresh_token(subject=user.email)
 
-    # persist refresh token in DB (revocable)
     session.add(
         RefreshToken(
             user_id=user.id,
             token=refresh,
-            expires_at=refresh_exp.replace(tzinfo=None),  # keep naive for DB in this stage
+            expires_at=refresh_exp.replace(tzinfo=None),
         )
     )
     await session.commit()
@@ -121,7 +118,6 @@ async def login_user(session: AsyncSession, email: str, password: str) -> tuple[
 
 
 async def refresh_access_token(session: AsyncSession, refresh_token: str) -> tuple[str, str]:
-    # Must exist in DB and be not expired
     result = await session.execute(
         select(RefreshToken).where(RefreshToken.token == refresh_token)
     )
@@ -130,7 +126,6 @@ async def refresh_access_token(session: AsyncSession, refresh_token: str) -> tup
         raise ValueError("Invalid refresh token")
 
     if stored.expires_at < _utcnow_naive():
-        # remove expired token
         await session.delete(stored)
         await session.commit()
         raise ValueError("Refresh token expired")
@@ -139,7 +134,7 @@ async def refresh_access_token(session: AsyncSession, refresh_token: str) -> tup
     if not user.is_active:
         raise ValueError("Account is not active")
 
-    # Rotate refresh token for better security
+    # Rotate refresh token
     await session.delete(stored)
     await session.flush()
 
@@ -159,7 +154,6 @@ async def refresh_access_token(session: AsyncSession, refresh_token: str) -> tup
 
 
 async def logout_user(session: AsyncSession, refresh_token: str) -> None:
-    # Delete refresh token from DB → cannot be used again
     await session.execute(delete(RefreshToken).where(RefreshToken.token == refresh_token))
     await session.commit()
 
@@ -176,4 +170,61 @@ async def change_password(
     validate_password_complexity(new_password)
 
     user.hashed_password = hash_password(new_password)
+    await session.commit()
+
+
+async def request_password_reset(session: AsyncSession, email: str) -> str | None:
+    """
+    Returns token if reset is possible, otherwise None.
+
+    Security note: endpoints should respond with a generic message either way.
+    """
+    result = await session.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+
+    if user is None or not user.is_active:
+        return None
+
+    # invalidate previous token (unique by user_id)
+    await session.execute(
+        delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
+    )
+    await session.flush()
+
+    token_str = secrets.token_urlsafe(32)
+    expires_at = _utcnow_naive() + timedelta(hours=PASSWORD_RESET_TTL_HOURS)
+
+    session.add(
+        PasswordResetToken(
+            user_id=user.id,
+            token=token_str,
+            expires_at=expires_at,
+        )
+    )
+    await session.commit()
+    return token_str
+
+
+async def confirm_password_reset(session: AsyncSession, token_str: str, new_password: str) -> None:
+    validate_password_complexity(new_password)
+
+    result = await session.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token == token_str)
+    )
+    token = result.scalar_one_or_none()
+    if token is None:
+        raise ValueError("Invalid token")
+
+    if token.expires_at < _utcnow_naive():
+        await session.delete(token)
+        await session.commit()
+        raise ValueError("Token expired")
+
+    user = token.user
+    user.hashed_password = hash_password(new_password)
+
+    # revoke all refresh tokens (optional but правильний security)
+    await session.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id))
+
+    await session.delete(token)
     await session.commit()

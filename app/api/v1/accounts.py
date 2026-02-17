@@ -4,13 +4,15 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
-from app.core.emails import send_activation_email
+from app.core.emails import send_activation_email, send_password_reset_email
 from app.db.models.accounts import User
 from app.db.session import get_db
 from app.schemas.accounts import (
     ChangePasswordRequest,
     LogoutRequest,
     MessageResponse,
+    PasswordResetConfirmRequest,
+    PasswordResetRequest,
     RefreshTokenRequest,
     TokenPairResponse,
     UserLoginRequest,
@@ -19,10 +21,12 @@ from app.schemas.accounts import (
 from app.services.accounts import (
     activate_user,
     change_password,
+    confirm_password_reset,
     login_user,
     logout_user,
     refresh_access_token,
     register_user,
+    request_password_reset,
 )
 
 router = APIRouter(prefix="/accounts", tags=["Accounts"])
@@ -102,3 +106,31 @@ async def change_password_endpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     return MessageResponse(message="Password changed")
+
+
+@router.post("/forgot-password", response_model=MessageResponse)
+async def forgot_password(
+    payload: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    # Return generic response to avoid user enumeration
+    token = await request_password_reset(db, payload.email)
+    if token:
+        send_password_reset_email(payload.email, token)
+
+    return MessageResponse(
+        message="If the email is registered and active, a password reset link has been sent"
+    )
+
+
+@router.post("/reset-password", response_model=MessageResponse)
+async def reset_password(
+    payload: PasswordResetConfirmRequest,
+    db: AsyncSession = Depends(get_db),
+) -> MessageResponse:
+    try:
+        await confirm_password_reset(db, payload.token, payload.new_password)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    return MessageResponse(message="Password has been reset")
