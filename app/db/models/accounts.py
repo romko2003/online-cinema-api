@@ -65,6 +65,11 @@ class User(Base):
         uselist=False,
         cascade="all, delete-orphan",
     )
+    activation_token: Mapped["ActivationToken"] = relationship(
+        back_populates="user",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
 
 class UserProfile(Base):
@@ -85,3 +90,18 @@ class UserProfile(Base):
     info: Mapped[str | None] = mapped_column(Text)
 
     user: Mapped["User"] = relationship(back_populates="profile")
+
+
+class ActivationToken(Base):
+    __tablename__ = "activation_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        unique=True,
+        nullable=False,
+    )
+    token: Mapped[str] = mapped_column(String(255), unique=True, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    user: Mapped["User"] = relationship(back_populates="activation_token")
