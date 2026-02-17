@@ -32,7 +32,11 @@ router = APIRouter(prefix="/movies", tags=["Movies"])
 # Public catalog endpoints
 # -------------------------
 
-@router.get("", response_model=PaginatedMoviesResponse)
+@router.get(
+    "",
+    response_model=PaginatedMoviesResponse,
+    summary="Browse movie catalog",
+)
 async def list_movies(
     page: int = Query(1, ge=1),
     page_size: int = Query(12, ge=1, le=100),
@@ -77,15 +81,25 @@ async def list_movies(
                 time=m.time,
                 imdb=m.imdb,
                 price=m.price,
-                certification=CertificationResponse(id=m.certification.id, name=m.certification.name),
+                certification=CertificationResponse(
+                    id=m.certification.id,
+                    name=m.certification.name,
+                ),
             )
             for m in items
         ],
     )
 
 
-@router.get("/{movie_uuid}", response_model=MovieDetailResponse)
-async def get_movie(movie_uuid: UUID, db: AsyncSession = Depends(get_db)) -> MovieDetailResponse:
+@router.get(
+    "/{movie_uuid}",
+    response_model=MovieDetailResponse,
+    summary="Get detailed information about a movie",
+)
+async def get_movie(
+    movie_uuid: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> MovieDetailResponse:
     movie = await movies_service.get_movie_by_uuid(db, movie_uuid)
     if movie is None:
         raise HTTPException(status_code=404, detail="Movie not found")
@@ -102,7 +116,10 @@ async def get_movie(movie_uuid: UUID, db: AsyncSession = Depends(get_db)) -> Mov
         gross=movie.gross,
         description=movie.description,
         price=movie.price,
-        certification=CertificationResponse(id=movie.certification.id, name=movie.certification.name),
+        certification=CertificationResponse(
+            id=movie.certification.id,
+            name=movie.certification.name,
+        ),
         genres=[GenreResponse(id=g.id, name=g.name) for g in movie.genres],
         directors=[DirectorResponse(id=d.id, name=d.name) for d in movie.directors],
         stars=[StarResponse(id=s.id, name=s.name) for s in movie.stars],
@@ -113,7 +130,12 @@ async def get_movie(movie_uuid: UUID, db: AsyncSession = Depends(get_db)) -> Mov
 # Moderator CRUD endpoints
 # -------------------------
 
-@router.post("/genres", response_model=GenreResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/genres",
+    response_model=GenreResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new genre (moderator only)",
+)
 async def create_genre(
     payload: GenreBase,
     db: AsyncSession = Depends(get_db),
@@ -126,7 +148,12 @@ async def create_genre(
     return GenreResponse(id=entity.id, name=entity.name)
 
 
-@router.post("/stars", response_model=StarResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/stars",
+    response_model=StarResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new star (moderator only)",
+)
 async def create_star(
     payload: StarBase,
     db: AsyncSession = Depends(get_db),
@@ -139,7 +166,12 @@ async def create_star(
     return StarResponse(id=entity.id, name=entity.name)
 
 
-@router.post("/directors", response_model=DirectorResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/directors",
+    response_model=DirectorResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new director (moderator only)",
+)
 async def create_director(
     payload: DirectorBase,
     db: AsyncSession = Depends(get_db),
@@ -152,7 +184,12 @@ async def create_director(
     return DirectorResponse(id=entity.id, name=entity.name)
 
 
-@router.post("/certifications", response_model=CertificationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/certifications",
+    response_model=CertificationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new certification (moderator only)",
+)
 async def create_certification(
     payload: CertificationBase,
     db: AsyncSession = Depends(get_db),
@@ -163,88 +200,3 @@ async def create_certification(
     except IntegrityError:
         raise HTTPException(status_code=400, detail="Certification already exists")
     return CertificationResponse(id=entity.id, name=entity.name)
-
-
-@router.post("", response_model=MovieDetailResponse, status_code=status.HTTP_201_CREATED)
-async def create_movie(
-    payload: MovieCreateRequest,
-    db: AsyncSession = Depends(get_db),
-    _moderator=Depends(require_moderator),
-) -> MovieDetailResponse:
-    try:
-        movie = await movies_service.create_movie(db, payload)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except IntegrityError:
-        raise HTTPException(status_code=400, detail="Movie already exists or invalid relation ids")
-
-    # reload via uuid for consistent response with relations loaded
-    movie_full = await movies_service.get_movie_by_uuid(db, movie.uuid)
-    assert movie_full is not None
-
-    return MovieDetailResponse(
-        id=movie_full.id,
-        uuid=movie_full.uuid,
-        name=movie_full.name,
-        year=movie_full.year,
-        time=movie_full.time,
-        imdb=movie_full.imdb,
-        votes=movie_full.votes,
-        meta_score=movie_full.meta_score,
-        gross=movie_full.gross,
-        description=movie_full.description,
-        price=movie_full.price,
-        certification=CertificationResponse(id=movie_full.certification.id, name=movie_full.certification.name),
-        genres=[GenreResponse(id=g.id, name=g.name) for g in movie_full.genres],
-        directors=[DirectorResponse(id=d.id, name=d.name) for d in movie_full.directors],
-        stars=[StarResponse(id=s.id, name=s.name) for s in movie_full.stars],
-    )
-
-
-@router.put("/{movie_id}", response_model=MovieDetailResponse)
-async def update_movie(
-    movie_id: int,
-    payload: MovieUpdateRequest,
-    db: AsyncSession = Depends(get_db),
-    _moderator=Depends(require_moderator),
-) -> MovieDetailResponse:
-    try:
-        movie = await movies_service.update_movie(db, movie_id, payload)
-    except ValueError as e:
-        raise HTTPException(status_code=404 if "not found" in str(e).lower() else 400, detail=str(e))
-
-    movie_full = await movies_service.get_movie_by_uuid(db, movie.uuid)
-    assert movie_full is not None
-
-    return MovieDetailResponse(
-        id=movie_full.id,
-        uuid=movie_full.uuid,
-        name=movie_full.name,
-        year=movie_full.year,
-        time=movie_full.time,
-        imdb=movie_full.imdb,
-        votes=movie_full.votes,
-        meta_score=movie_full.meta_score,
-        gross=movie_full.gross,
-        description=movie_full.description,
-        price=movie_full.price,
-        certification=CertificationResponse(id=movie_full.certification.id, name=movie_full.certification.name),
-        genres=[GenreResponse(id=g.id, name=g.name) for g in movie_full.genres],
-        directors=[DirectorResponse(id=d.id, name=d.name) for d in movie_full.directors],
-        stars=[StarResponse(id=s.id, name=s.name) for s in movie_full.stars],
-    )
-
-
-@router.delete("/{movie_id}", response_model=dict)
-async def delete_movie(
-    movie_id: int,
-    db: AsyncSession = Depends(get_db),
-    _moderator=Depends(require_moderator),
-) -> dict:
-    try:
-        await movies_service.delete_movie(db, movie_id)
-    except ValueError as e:
-        # 404 vs 400 depending on message
-        msg = str(e)
-        raise HTTPException(status_code=404 if "not found" in msg.lower() else 400, detail=msg)
-    return {"message": "Movie deleted"}
