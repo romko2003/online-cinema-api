@@ -2,33 +2,96 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from sqlalchemy import Select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.movies import Certification, Director, Genre, Movie, Star
-from app.db.repositories import movies as repo
-from app.schemas.movies import MovieCreateRequest, MovieUpdateRequest
+from app.repositories import (
+    CertificationRepository,
+    DirectorRepository,
+    GenreRepository,
+    MovieRepository,
+    StarRepository,
+)
+
+
+async def create_genre(db: AsyncSession, name: str) -> Genre:
+    return await GenreRepository.create(db, name=name)
+
+
+async def create_star(db: AsyncSession, name: str) -> Star:
+    return await StarRepository.create(db, name=name)
+
+
+async def create_director(db: AsyncSession, name: str) -> Director:
+    return await DirectorRepository.create(db, name=name)
+
+
+async def create_certification(db: AsyncSession, name: str) -> Certification:
+    return await CertificationRepository.create(db, name=name)
+
+
+async def get_movie_by_uuid(db: AsyncSession, movie_uuid: UUID) -> Movie | None:
+    return await MovieRepository.get_by_uuid(db, movie_uuid)
+
+
+def _apply_filters(
+    stmt: Select,
+    *,
+    q: str | None,
+    year: int | None,
+    imdb_min: float | None,
+    imdb_max: float | None,
+    certification_id: int | None,
+    genre_id: int | None,
+    director_id: int | None,
+    star_id: int | None,
+) -> Select:
+    # NOTE: filters that require joins can be implemented by repositories later.
+    # For now we keep stmt-level filters minimal and stable.
+    if q:
+        stmt = stmt.where(Movie.name.ilike(f"%{q}%"))  # type: ignore[attr-defined]
+    if year is not None:
+        stmt = stmt.where(Movie.year == year)
+    if imdb_min is not None:
+        stmt = stmt.where(Movie.imdb >= imdb_min)
+    if imdb_max is not None:
+        stmt = stmt.where(Movie.imdb <= imdb_max)
+    if certification_id is not None:
+        stmt = stmt.where(Movie.certification_id == certification_id)
+
+    # Relation filters (genre/director/star) require joins; keep for later extension.
+    # You can implement them inside MovieRepository with explicit joins.
+    if genre_id is not None:
+        stmt = stmt.join(Movie.genres).where(Genre.id == genre_id)  # type: ignore[attr-defined]
+    if director_id is not None:
+        stmt = stmt.join(Movie.directors).where(Director.id == director_id)  # type: ignore[attr-defined]
+    if star_id is not None:
+        stmt = stmt.join(Movie.stars).where(Star.id == star_id)  # type: ignore[attr-defined]
+
+    return stmt
 
 
 async def list_movies(
-    session: AsyncSession,
+    db: AsyncSession,
     *,
     page: int,
     page_size: int,
-    q: str | None = None,
-    year: int | None = None,
-    imdb_min: float | None = None,
-    imdb_max: float | None = None,
-    certification_id: int | None = None,
-    genre_id: int | None = None,
-    director_id: int | None = None,
-    star_id: int | None = None,
-    sort_by: repo.SortField = "year",
-    order: repo.SortOrder = "desc",
+    q: str | None,
+    year: int | None,
+    imdb_min: float | None,
+    imdb_max: float | None,
+    certification_id: int | None,
+    genre_id: int | None,
+    director_id: int | None,
+    star_id: int | None,
+    sort_by: str,
+    order: str,
 ) -> tuple[int, list[Movie]]:
-    return await repo.list_movies(
-        session,
-        page=page,
-        page_size=page_size,
+    stmt = MovieRepository._base_list_stmt()
+    stmt = _apply_filters(
+        stmt,
         q=q,
         year=year,
         imdb_min=imdb_min,
@@ -37,163 +100,128 @@ async def list_movies(
         genre_id=genre_id,
         director_id=director_id,
         star_id=star_id,
-        sort_by=sort_by,
-        order=order,
     )
 
+    sort_col = getattr(Movie, sort_by)
+    stmt = stmt.order_by(sort_col.asc() if order == "asc" else sort_col.desc())
 
-async def get_movie_by_uuid(session: AsyncSession, movie_uuid: UUID) -> Movie | None:
-    return await repo.get_movie_by_uuid(session, movie_uuid)
+    total = await MovieRepository.count_movies(db, stmt)
 
-
-async def create_genre(session: AsyncSession, name: str) -> Genre:
-    entity = Genre(name=name)
-    await repo.create_entity(session, entity)
-    return entity
-
-
-async def create_star(session: AsyncSession, name: str) -> Star:
-    entity = Star(name=name)
-    await repo.create_entity(session, entity)
-    return entity
+    stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+    items = await MovieRepository.list_movies(db, stmt)
+    return total, items
 
 
-async def create_director(session: AsyncSession, name: str) -> Director:
-    entity = Director(name=name)
-    await repo.create_entity(session, entity)
-    return entity
+async def create_movie(db: AsyncSession, payload) -> Movie:
+    # payload is MovieCreateRequest or dict-like
+    data = payload.dict() if hasattr(payload, "dict") else dict(payload)
 
+    # Validate referenced entities exist (via repositories)
+    cert = await CertificationRepository.get_by_id(db, data["certification_id"])
+    if cert is None:
+        raise ValueError("Invalid certification_id")
 
-async def create_certification(session: AsyncSession, name: str) -> Certification:
-    entity = Certification(name=name)
-    await repo.create_entity(session, entity)
-    return entity
+    genre_ids = data.get("genre_ids", [])
+    director_ids = data.get("director_ids", [])
+    star_ids = data.get("star_ids", [])
 
-
-async def create_movie(session: AsyncSession, payload: MovieCreateRequest) -> Movie:
-    certification = await repo.get_certification(session, payload.certification_id)
-    if certification is None:
-        raise ValueError("Certification not found")
-
-    genres: list[Genre] = []
-    for gid in payload.genre_ids:
-        g = await repo.get_genre(session, gid)
+    genres = []
+    for gid in genre_ids:
+        g = await GenreRepository.get_by_id(db, gid)
         if g is None:
-            raise ValueError(f"Genre not found: {gid}")
+            raise ValueError("Invalid genre_ids")
         genres.append(g)
 
-    directors: list[Director] = []
-    for did in payload.director_ids:
-        d = await repo.get_director(session, did)
+    directors = []
+    for did in director_ids:
+        d = await DirectorRepository.get_by_id(db, did)
         if d is None:
-            raise ValueError(f"Director not found: {did}")
+            raise ValueError("Invalid director_ids")
         directors.append(d)
 
-    stars: list[Star] = []
-    for sid in payload.star_ids:
-        s = await repo.get_star(session, sid)
+    stars = []
+    for sid in star_ids:
+        s = await StarRepository.get_by_id(db, sid)
         if s is None:
-            raise ValueError(f"Star not found: {sid}")
+            raise ValueError("Invalid star_ids")
         stars.append(s)
 
-    movie = Movie(
-        name=payload.name,
-        year=payload.year,
-        time=payload.time,
-        imdb=payload.imdb,
-        votes=payload.votes,
-        meta_score=payload.meta_score,
-        gross=payload.gross,
-        description=payload.description,
-        price=payload.price,
-        certification_id=payload.certification_id,
-        genres=genres,
-        directors=directors,
-        stars=stars,
+    movie = await MovieRepository.create(
+        db,
+        name=data["name"],
+        year=data["year"],
+        time=data["time"],
+        imdb=data["imdb"],
+        votes=data["votes"],
+        meta_score=data.get("meta_score"),
+        gross=data.get("gross"),
+        description=data["description"],
+        price=data["price"],
+        certification_id=data["certification_id"],
     )
-    session.add(movie)
-    await session.commit()
-    await session.refresh(movie)
+
+    movie.genres = genres
+    movie.directors = directors
+    movie.stars = stars
+
+    await db.flush()
     return movie
 
 
-async def update_movie(session: AsyncSession, movie_id: int, payload: MovieUpdateRequest) -> Movie:
-    movie = await repo.get_movie(session, movie_id)
+async def update_movie(db: AsyncSession, movie_id: int, payload) -> Movie:
+    movie = await MovieRepository.get_by_id(db, movie_id)
     if movie is None:
         raise ValueError("Movie not found")
 
-    if payload.name is not None:
-        movie.name = payload.name
-    if payload.year is not None:
-        movie.year = payload.year
-    if payload.time is not None:
-        movie.time = payload.time
-    if payload.imdb is not None:
-        movie.imdb = payload.imdb
-    if payload.votes is not None:
-        movie.votes = payload.votes
-    if payload.meta_score is not None:
-        movie.meta_score = payload.meta_score
-    if payload.gross is not None:
-        movie.gross = payload.gross
-    if payload.description is not None:
-        movie.description = payload.description
-    if payload.price is not None:
-        movie.price = payload.price
+    data = payload.dict(exclude_unset=True) if hasattr(payload, "dict") else dict(payload)
 
-    if payload.certification_id is not None:
-        cert = await repo.get_certification(session, payload.certification_id)
+    # scalar fields
+    for key in ["name", "year", "time", "imdb", "votes", "meta_score", "gross", "description", "price"]:
+        if key in data:
+            setattr(movie, key, data[key])
+
+    if "certification_id" in data:
+        cert = await CertificationRepository.get_by_id(db, data["certification_id"])
         if cert is None:
-            raise ValueError("Certification not found")
-        movie.certification_id = payload.certification_id
+            raise ValueError("Invalid certification_id")
+        movie.certification_id = data["certification_id"]
 
-    if payload.genre_ids is not None:
-        new_genres: list[Genre] = []
-        for gid in payload.genre_ids:
-            g = await repo.get_genre(session, gid)
+    # relations (optional)
+    if "genre_ids" in data:
+        genres = []
+        for gid in data["genre_ids"]:
+            g = await GenreRepository.get_by_id(db, gid)
             if g is None:
-                raise ValueError(f"Genre not found: {gid}")
-            new_genres.append(g)
-        movie.genres = new_genres
+                raise ValueError("Invalid genre_ids")
+            genres.append(g)
+        movie.genres = genres
 
-    if payload.director_ids is not None:
-        new_directors: list[Director] = []
-        for did in payload.director_ids:
-            d = await repo.get_director(session, did)
+    if "director_ids" in data:
+        directors = []
+        for did in data["director_ids"]:
+            d = await DirectorRepository.get_by_id(db, did)
             if d is None:
-                raise ValueError(f"Director not found: {did}")
-            new_directors.append(d)
-        movie.directors = new_directors
+                raise ValueError("Invalid director_ids")
+            directors.append(d)
+        movie.directors = directors
 
-    if payload.star_ids is not None:
-        new_stars: list[Star] = []
-        for sid in payload.star_ids:
-            s = await repo.get_star(session, sid)
+    if "star_ids" in data:
+        stars = []
+        for sid in data["star_ids"]:
+            s = await StarRepository.get_by_id(db, sid)
             if s is None:
-                raise ValueError(f"Star not found: {sid}")
-            new_stars.append(s)
-        movie.stars = new_stars
+                raise ValueError("Invalid star_ids")
+            stars.append(s)
+        movie.stars = stars
 
-    await session.commit()
-    await session.refresh(movie)
+    await db.flush()
     return movie
 
 
-async def can_delete_movie(session: AsyncSession, movie_id: int) -> bool:
-    """
-    Requirement: prevent deleting a movie if at least one user purchased it.
-    Full enforcement will be added when Orders module is implemented (PR #8).
-    """
-    _ = session, movie_id
-    return True
-
-
-async def delete_movie(session: AsyncSession, movie_id: int) -> None:
-    movie = await repo.get_movie(session, movie_id)
+async def delete_movie(db: AsyncSession, movie_id: int) -> None:
+    movie = await MovieRepository.get_by_id(db, movie_id)
     if movie is None:
         raise ValueError("Movie not found")
 
-    if not await can_delete_movie(session, movie_id):
-        raise ValueError("Movie cannot be deleted because it has purchases")
-
-    await repo.delete_by_id(session, movie)
+    await db.delete(movie)
+    await db.flush()
