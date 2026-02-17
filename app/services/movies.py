@@ -3,9 +3,9 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import Select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.enums import MovieSortField, SortOrder
 from app.db.models.movies import Certification, Director, Genre, Movie, Star
 from app.repositories import (
     CertificationRepository,
@@ -48,25 +48,28 @@ def _apply_filters(
     director_id: int | None,
     star_id: int | None,
 ) -> Select:
-    # NOTE: filters that require joins can be implemented by repositories later.
-    # For now we keep stmt-level filters minimal and stable.
     if q:
         stmt = stmt.where(Movie.name.ilike(f"%{q}%"))  # type: ignore[attr-defined]
+
     if year is not None:
         stmt = stmt.where(Movie.year == year)
+
     if imdb_min is not None:
         stmt = stmt.where(Movie.imdb >= imdb_min)
+
     if imdb_max is not None:
         stmt = stmt.where(Movie.imdb <= imdb_max)
+
     if certification_id is not None:
         stmt = stmt.where(Movie.certification_id == certification_id)
 
-    # Relation filters (genre/director/star) require joins; keep for later extension.
-    # You can implement them inside MovieRepository with explicit joins.
+    # Relation filters (require joins)
     if genre_id is not None:
         stmt = stmt.join(Movie.genres).where(Genre.id == genre_id)  # type: ignore[attr-defined]
+
     if director_id is not None:
         stmt = stmt.join(Movie.directors).where(Director.id == director_id)  # type: ignore[attr-defined]
+
     if star_id is not None:
         stmt = stmt.join(Movie.stars).where(Star.id == star_id)  # type: ignore[attr-defined]
 
@@ -86,8 +89,8 @@ async def list_movies(
     genre_id: int | None,
     director_id: int | None,
     star_id: int | None,
-    sort_by: str,
-    order: str,
+    sort_by: MovieSortField,
+    order: SortOrder,
 ) -> tuple[int, list[Movie]]:
     stmt = MovieRepository._base_list_stmt()
     stmt = _apply_filters(
@@ -102,8 +105,8 @@ async def list_movies(
         star_id=star_id,
     )
 
-    sort_col = getattr(Movie, sort_by)
-    stmt = stmt.order_by(sort_col.asc() if order == "asc" else sort_col.desc())
+    sort_col = getattr(Movie, sort_by.value)
+    stmt = stmt.order_by(sort_col.asc() if order.value == "asc" else sort_col.desc())
 
     total = await MovieRepository.count_movies(db, stmt)
 
@@ -113,10 +116,8 @@ async def list_movies(
 
 
 async def create_movie(db: AsyncSession, payload) -> Movie:
-    # payload is MovieCreateRequest or dict-like
     data = payload.dict() if hasattr(payload, "dict") else dict(payload)
 
-    # Validate referenced entities exist (via repositories)
     cert = await CertificationRepository.get_by_id(db, data["certification_id"])
     if cert is None:
         raise ValueError("Invalid certification_id")
@@ -125,21 +126,21 @@ async def create_movie(db: AsyncSession, payload) -> Movie:
     director_ids = data.get("director_ids", [])
     star_ids = data.get("star_ids", [])
 
-    genres = []
+    genres: list[Genre] = []
     for gid in genre_ids:
         g = await GenreRepository.get_by_id(db, gid)
         if g is None:
             raise ValueError("Invalid genre_ids")
         genres.append(g)
 
-    directors = []
+    directors: list[Director] = []
     for did in director_ids:
         d = await DirectorRepository.get_by_id(db, did)
         if d is None:
             raise ValueError("Invalid director_ids")
         directors.append(d)
 
-    stars = []
+    stars: list[Star] = []
     for sid in star_ids:
         s = await StarRepository.get_by_id(db, sid)
         if s is None:
@@ -175,7 +176,6 @@ async def update_movie(db: AsyncSession, movie_id: int, payload) -> Movie:
 
     data = payload.dict(exclude_unset=True) if hasattr(payload, "dict") else dict(payload)
 
-    # scalar fields
     for key in ["name", "year", "time", "imdb", "votes", "meta_score", "gross", "description", "price"]:
         if key in data:
             setattr(movie, key, data[key])
@@ -186,9 +186,8 @@ async def update_movie(db: AsyncSession, movie_id: int, payload) -> Movie:
             raise ValueError("Invalid certification_id")
         movie.certification_id = data["certification_id"]
 
-    # relations (optional)
     if "genre_ids" in data:
-        genres = []
+        genres: list[Genre] = []
         for gid in data["genre_ids"]:
             g = await GenreRepository.get_by_id(db, gid)
             if g is None:
@@ -197,7 +196,7 @@ async def update_movie(db: AsyncSession, movie_id: int, payload) -> Movie:
         movie.genres = genres
 
     if "director_ids" in data:
-        directors = []
+        directors: list[Director] = []
         for did in data["director_ids"]:
             d = await DirectorRepository.get_by_id(db, did)
             if d is None:
@@ -206,7 +205,7 @@ async def update_movie(db: AsyncSession, movie_id: int, payload) -> Movie:
         movie.directors = directors
 
     if "star_ids" in data:
-        stars = []
+        stars: list[Star] = []
         for sid in data["star_ids"]:
             s = await StarRepository.get_by_id(db, sid)
             if s is None:
