@@ -6,6 +6,7 @@ from app.db.models.accounts import (
     UserGroup,
     UserProfile,
 )
+from app.db.models.cart import Cart, CartItem
 from app.db.models.movies import Certification, Director, Genre, Movie, Star
 
 __all__ = [
@@ -22,4 +23,7 @@ __all__ = [
     "Director",
     "Certification",
     "Movie",
+    # cart
+    "Cart",
+    "CartItem",
 ]
