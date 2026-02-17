@@ -4,9 +4,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.security import decode_token
-from app.db.models.accounts import User
+from app.db.models.accounts import User, UserGroup, UserGroupEnum
 from app.db.session import get_db
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -31,7 +32,13 @@ async def get_current_user(
     if not subject:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token payload")
 
-    result = await db.execute(select(User).where(User.email == subject))
+    stmt = (
+        select(User)
+        .join(UserGroup, User.group_id == UserGroup.id)
+        .where(User.email == subject)
+        .options(selectinload(User.group))
+    )
+    result = await db.execute(stmt)
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -40,4 +47,22 @@ async def get_current_user(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Account is not active")
 
+    return user
+
+
+def require_moderator(user: User = Depends(get_current_user)) -> User:
+    if user.group.name not in (UserGroupEnum.MODERATOR, UserGroupEnum.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Moderator permissions required",
+        )
+    return user
+
+
+def require_admin(user: User = Depends(get_current_user)) -> User:
+    if user.group.name != UserGroupEnum.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin permissions required",
+        )
     return user
