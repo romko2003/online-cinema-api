@@ -47,3 +47,8 @@ def send_payment_confirmation_email(email: str, order_id: int, amount: str) -> N
         subject="Payment confirmation",
         body=f"Thanks for your purchase!\n\nOrder #{order_id} is paid.\nAmount: {amount}\n",
     )
+
+
+def send_payment_confirmation_email(email: str, order_id: int, amount: str) -> None:
+    # Temporary stub (MailHog/SMTP later)
+    print(f"[EMAIL] Payment confirmation for {email}: Order #{order_id} paid, amount: {amount}")

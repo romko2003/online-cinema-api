@@ -24,12 +24,7 @@ from app.services import payments as payments_service
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
 
-@router.post(
-    "/checkout-session",
-    response_model=CreateCheckoutSessionResponse,
-    summary="Create Stripe checkout session for an order",
-    description="Returns a checkout URL for Stripe-hosted payment flow.",
-)
+@router.post("/checkout-session", response_model=CreateCheckoutSessionResponse)
 async def create_checkout_session(
     payload: CreateCheckoutSessionRequest,
     current_user: User = Depends(get_current_user),
@@ -50,12 +45,7 @@ async def create_checkout_session(
     return CreateCheckoutSessionResponse(checkout_url=checkout_url)
 
 
-@router.post(
-    "/webhook",
-    response_model=dict,
-    summary="Stripe webhook receiver",
-    description="Processes Stripe events (validated via Stripe-Signature header).",
-)
+@router.post("/webhook", response_model=dict)
 async def stripe_webhook(
     request: Request,
     stripe_signature: str | None = Header(default=None, alias="Stripe-Signature"),
@@ -90,12 +80,7 @@ def _to_response(p: Payment) -> PaymentResponse:
     )
 
 
-@router.get(
-    "",
-    response_model=PaymentsListResponse,
-    summary="List current user's payments",
-    description="Returns payment history for the authenticated user.",
-)
+@router.get("", response_model=PaymentsListResponse)
 async def list_my_payments(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -111,12 +96,7 @@ async def list_my_payments(
     return PaymentsListResponse(items=[_to_response(p) for p in payments])
 
 
-@router.get(
-    "/admin",
-    response_model=PaymentsListResponse,
-    summary="List payments with filters (admin only)",
-    description="Admin endpoint to list payments by user/status/date filters.",
-)
+@router.get("/admin", response_model=PaymentsListResponse)
 async def list_payments_admin(
     user_id: int | None = None,
     status_filter: Literal["successful", "canceled", "refunded"] | None = None,
