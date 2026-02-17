@@ -24,8 +24,8 @@ def _build_cart_response(user_id: int, cart_items, movies) -> CartResponse:
     for item in cart_items:
         m = movies_by_id.get(item.movie_id)
         if m is None:
-            # Movie deleted/unavailable: in PR #8 (Orders) we’ll handle exclusions properly.
-            # For cart we simply skip missing movie rows in response.
+            # Movie deleted/unavailable:
+            # for cart we simply skip missing movie rows in response.
             continue
 
         items.append(
@@ -39,11 +39,18 @@ def _build_cart_response(user_id: int, cart_items, movies) -> CartResponse:
             )
         )
 
-    total = cart_service.calc_total([movies_by_id[i.movie_id] for i in cart_items if i.movie_id in movies_by_id])
+    total = cart_service.calc_total(
+        [movies_by_id[i.movie_id] for i in cart_items if i.movie_id in movies_by_id]
+    )
     return CartResponse(user_id=user_id, items=items, total_amount=total)
 
 
-@router.get("", response_model=CartResponse)
+@router.get(
+    "",
+    response_model=CartResponse,
+    summary="Get current user's cart",
+    description="Returns cart items with movie info and total amount.",
+)
 async def get_my_cart(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -55,7 +62,13 @@ async def get_my_cart(
     return _build_cart_response(current_user.id, cart.items, movies)
 
 
-@router.post("/add", response_model=dict, status_code=status.HTTP_200_OK)
+@router.post(
+    "/add",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Add movie to cart",
+    description="Adds a movie to the authenticated user's cart. Prevents duplicates and already purchased movies.",
+)
 async def add_to_cart(
     payload: CartAddItemRequest,
     current_user: User = Depends(get_current_user),
@@ -72,7 +85,13 @@ async def add_to_cart(
     return {"message": "Movie added to cart"}
 
 
-@router.post("/remove", response_model=dict, status_code=status.HTTP_200_OK)
+@router.post(
+    "/remove",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Remove movie from cart",
+    description="Removes a movie from the authenticated user's cart.",
+)
 async def remove_from_cart(
     payload: CartRemoveItemRequest,
     current_user: User = Depends(get_current_user),
@@ -89,7 +108,13 @@ async def remove_from_cart(
     return {"message": "Movie removed from cart"}
 
 
-@router.post("/clear", response_model=dict, status_code=status.HTTP_200_OK)
+@router.post(
+    "/clear",
+    response_model=dict,
+    status_code=status.HTTP_200_OK,
+    summary="Clear cart",
+    description="Clears all items from the authenticated user's cart.",
+)
 async def clear_my_cart(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -102,7 +127,12 @@ async def clear_my_cart(
 # Admin endpoint (analysis / troubleshooting)
 # -------------------------
 
-@router.get("/admin/{user_id}", response_model=CartResponse)
+@router.get(
+    "/admin/{user_id}",
+    response_model=CartResponse,
+    summary="Get user's cart (admin only)",
+    description="Admin troubleshooting endpoint to inspect a specific user's cart.",
+)
 async def get_user_cart_admin(
     user_id: int,
     _admin=Depends(require_admin),
