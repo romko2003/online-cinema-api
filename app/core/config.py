@@ -8,11 +8,8 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     ENV: str = "dev"
 
-    # Later:
-    # DATABASE_URL: str
-    # JWT_SECRET_KEY: str
-    # JWT_ACCESS_TTL_MINUTES: int = 15
-    # JWT_REFRESH_TTL_DAYS: int = 14
+    DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/cinema"
+    DB_ECHO: bool = False
 
     model_config = SettingsConfigDict(
         env_file=".env",
