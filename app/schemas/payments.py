@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
+
+from app.core.enums import PaymentStatus
 
 
 class CreateCheckoutSessionRequest(BaseModel):
-    order_id: int = Field(ge=1)
+    order_id: int
 
 
 class CreateCheckoutSessionResponse(BaseModel):
@@ -30,3 +32,10 @@ class PaymentResponse(BaseModel):
 
 class PaymentsListResponse(BaseModel):
     items: list[PaymentResponse]
+
+
+class PaymentsAdminQuery(BaseModel):
+    user_id: int | None = None
+    status_filter: PaymentStatus | None = None
+    date_from: str | None = None
+    date_to: str | None = None
