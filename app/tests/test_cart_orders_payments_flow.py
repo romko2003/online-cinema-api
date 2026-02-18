@@ -35,6 +35,7 @@ async def test_cart_to_order_to_checkout_session_flow(
 
     # Grab activation token from DB (same approach as PR#13)
     from sqlalchemy import select
+
     from app.db.models.accounts import ActivationToken
 
     res = await db_session.execute(select(ActivationToken))
@@ -169,6 +170,7 @@ async def test_list_payments_empty_for_new_user(client, db_session: AsyncSession
     assert r.status_code == 200, r.text
 
     from sqlalchemy import select
+
     from app.db.models.accounts import ActivationToken
 
     res = await db_session.execute(select(ActivationToken))

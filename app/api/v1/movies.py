@@ -15,10 +15,8 @@ from app.schemas.movies import (
     DirectorResponse,
     GenreBase,
     GenreResponse,
-    MovieCreateRequest,
     MovieDetailResponse,
     MovieShortResponse,
-    MovieUpdateRequest,
     PaginatedMoviesResponse,
     StarBase,
     StarResponse,
@@ -31,6 +29,7 @@ router = APIRouter(prefix="/movies", tags=["Movies"])
 # -------------------------
 # Public catalog endpoints
 # -------------------------
+
 
 @router.get(
     "",
@@ -65,7 +64,7 @@ async def list_movies(
         director_id=director_id,
         star_id=star_id,
         sort_by=sort_by,  # type: ignore[arg-type]
-        order=order,      # type: ignore[arg-type]
+        order=order,  # type: ignore[arg-type]
     )
 
     return PaginatedMoviesResponse(
@@ -129,6 +128,7 @@ async def get_movie(
 # -------------------------
 # Moderator CRUD endpoints
 # -------------------------
+
 
 @router.post(
     "/genres",

@@ -77,7 +77,6 @@ async def _mark_order_paid_and_create_payment(
     external_payment_id: str | None,
     amount: Decimal,
 ) -> None:
-    from app.db.models.orders import OrderItem
 
     stmt = (
         select(Order)

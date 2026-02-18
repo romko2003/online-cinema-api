@@ -9,10 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import movies as movies_service
 
-
 # -------------------------
 # Helpers
 # -------------------------
+
 
 async def _register_activate_login(
     client,
@@ -24,7 +24,9 @@ async def _register_activate_login(
     """
     # prevent real SMTP sends
     monkeypatch.setattr("app.api.v1.accounts.send_activation_email", lambda *args, **kwargs: None)
-    monkeypatch.setattr("app.api.v1.accounts.send_password_reset_email", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.api.v1.accounts.send_password_reset_email", lambda *args, **kwargs: None
+    )
 
     email = f"user_{uuid.uuid4().hex}@example.com"
     password = "StrongPass123!"
@@ -77,6 +79,7 @@ async def _ensure_admin_group_and_promote(
 
     try:
         from app.db.models.accounts import UserGroupEnum  # type: ignore
+
         admin_name = UserGroupEnum.ADMIN  # enum value
         admin_name_str = "ADMIN"
     except Exception:
@@ -142,6 +145,7 @@ async def _create_movie_for_tests(db: AsyncSession):
 # Cart edge cases
 # -------------------------
 
+
 @pytest.mark.asyncio
 async def test_cart_add_duplicate_movie_returns_400(client, db_session: AsyncSession, monkeypatch):
     user_id, access = await _register_activate_login(client, db_session, monkeypatch)
@@ -174,8 +178,11 @@ async def test_cart_remove_not_in_cart_returns_404(client, db_session: AsyncSess
 # Orders edge cases
 # -------------------------
 
+
 @pytest.mark.asyncio
-async def test_create_order_with_empty_cart_returns_400(client, db_session: AsyncSession, monkeypatch):
+async def test_create_order_with_empty_cart_returns_400(
+    client, db_session: AsyncSession, monkeypatch
+):
     _, access = await _register_activate_login(client, db_session, monkeypatch)
     headers = {"Authorization": f"Bearer {access}"}
 
@@ -216,6 +223,7 @@ async def test_create_then_cancel_order_success(client, db_session: AsyncSession
 # -------------------------
 # Admin endpoints
 # -------------------------
+
 
 @pytest.mark.asyncio
 async def test_cart_admin_requires_admin(client, db_session: AsyncSession, monkeypatch):

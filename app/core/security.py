@@ -9,7 +9,6 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 
-
 _PASSWORD_RULES = (
     "Password must be at least 8 characters long and include: "
     "1 uppercase letter, 1 lowercase letter, 1 digit, 1 special character."

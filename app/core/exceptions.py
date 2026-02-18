@@ -8,6 +8,7 @@ class AppError(Exception):
     """
     Base application error used for consistent error handling later.
     """
+
     message: str
 
 

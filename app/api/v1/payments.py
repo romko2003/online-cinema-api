@@ -119,11 +119,7 @@ async def list_payments_admin(
     if date_to:
         conditions.append(Payment.created_at <= datetime.fromisoformat(date_to))
 
-    stmt = (
-        select(Payment)
-        .order_by(Payment.created_at.desc())
-        .options(selectinload(Payment.items))
-    )
+    stmt = select(Payment).order_by(Payment.created_at.desc()).options(selectinload(Payment.items))
     if conditions:
         stmt = stmt.where(and_(*conditions))
 

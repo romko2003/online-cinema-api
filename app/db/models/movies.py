@@ -18,7 +18,6 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
-
 movie_genres = Table(
     "movie_genres",
     Base.metadata,
@@ -88,9 +87,7 @@ class Certification(Base):
 
 class Movie(Base):
     __tablename__ = "movies"
-    __table_args__ = (
-        UniqueConstraint("name", "year", "time", name="uq_movie_name_year_time"),
-    )
+    __table_args__ = (UniqueConstraint("name", "year", "time", name="uq_movie_name_year_time"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     uuid: Mapped[uuid_lib.UUID] = mapped_column(
