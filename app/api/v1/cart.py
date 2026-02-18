@@ -8,9 +8,9 @@ from app.db.models.accounts import User
 from app.db.session import get_db
 from app.schemas.cart import (
     CartAddItemRequest,
+    CartItemResponse,
     CartRemoveItemRequest,
     CartResponse,
-    CartItemResponse,
 )
 from app.services import cart as cart_service
 
@@ -57,7 +57,9 @@ async def get_my_cart(
 ) -> CartResponse:
     cart, movies = await cart_service.get_cart_details(db, current_user.id)
     if cart is None:
-        return CartResponse(user_id=current_user.id, items=[], total_amount=cart_service.calc_total([]))
+        return CartResponse(
+            user_id=current_user.id, items=[], total_amount=cart_service.calc_total([])
+        )
 
     return _build_cart_response(current_user.id, cart.items, movies)
 
@@ -126,6 +128,7 @@ async def clear_my_cart(
 # -------------------------
 # Admin endpoint (analysis / troubleshooting)
 # -------------------------
+
 
 @router.get(
     "/admin/{user_id}",

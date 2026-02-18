@@ -1,5 +1,5 @@
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision = "0005_movies_schema"
@@ -46,7 +46,9 @@ def upgrade() -> None:
         sa.Column("gross", sa.Float()),
         sa.Column("description", sa.Text(), nullable=False),
         sa.Column("price", sa.DECIMAL(10, 2), nullable=False, server_default="0.00"),
-        sa.Column("certification_id", sa.Integer(), sa.ForeignKey("certifications.id"), nullable=False),
+        sa.Column(
+            "certification_id", sa.Integer(), sa.ForeignKey("certifications.id"), nullable=False
+        ),
         sa.UniqueConstraint("name", "year", "time", name="uq_movie_name_year_time"),
     )
 

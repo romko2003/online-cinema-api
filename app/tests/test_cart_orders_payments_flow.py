@@ -26,6 +26,7 @@ async def test_cart_to_order_to_checkout_session_flow(
 
     # Grab activation token from DB
     from sqlalchemy import select
+
     from app.db.models.accounts import ActivationToken
 
     res = await db_session.execute(select(ActivationToken))
@@ -120,3 +121,36 @@ async def test_stripe_webhook_requires_signature_header(client, monkeypatch):
     assert r.status_code == 200, r.text
     assert r.json()["message"] == "Webhook processed"
     assert r.json()["status"] == 200
+
+
+@pytest.mark.asyncio
+async def test_list_payments_empty_for_new_user(client, db_session: AsyncSession, monkeypatch):
+    monkeypatch.setattr("app.api.v1.accounts.send_activation_email", lambda *args, **kwargs: None)
+
+    email = f"user_{uuid.uuid4().hex}@example.com"
+    password = "StrongPass123!"
+
+    r = await client.post("/api/v1/accounts/register", json={"email": email, "password": password})
+    assert r.status_code == 200, r.text
+
+    from sqlalchemy import select
+
+    from app.db.models.accounts import ActivationToken
+
+    res = await db_session.execute(select(ActivationToken))
+    token_row = res.scalars().first()
+    assert token_row is not None
+
+    r = await client.get("/api/v1/accounts/activate", params={"token": token_row.token})
+    assert r.status_code == 200, r.text
+
+    r = await client.post("/api/v1/accounts/login", json={"email": email, "password": password})
+    assert r.status_code == 200, r.text
+    access = r.json()["access_token"]
+    auth_headers = {"Authorization": f"Bearer {access}"}
+
+    r = await client.get("/api/v1/payments", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert "items" in data
+    assert data["items"] == []
