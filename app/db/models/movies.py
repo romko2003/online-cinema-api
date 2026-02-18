@@ -1,3 +1,4 @@
+# app/db/models/movies.py
 from __future__ import annotations
 
 import uuid as uuid_lib
@@ -5,6 +6,7 @@ from decimal import Decimal
 
 from sqlalchemy import (
     DECIMAL,
+    Column,
     Float,
     ForeignKey,
     Integer,
@@ -18,27 +20,60 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
+# -------------------------
+# Association tables (Core)
+# IMPORTANT: Use Column(...), NOT mapped_column(...)
+# -------------------------
+
 movie_genres = Table(
     "movie_genres",
     Base.metadata,
-    mapped_column("movie_id", ForeignKey("movies.id"), primary_key=True),
-    mapped_column("genre_id", ForeignKey("genres.id"), primary_key=True),
+    Column(
+        "movie_id",
+        ForeignKey("movies.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "genre_id",
+        ForeignKey("genres.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 movie_directors = Table(
     "movie_directors",
     Base.metadata,
-    mapped_column("movie_id", ForeignKey("movies.id"), primary_key=True),
-    mapped_column("director_id", ForeignKey("directors.id"), primary_key=True),
+    Column(
+        "movie_id",
+        ForeignKey("movies.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "director_id",
+        ForeignKey("directors.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
 movie_stars = Table(
     "movie_stars",
     Base.metadata,
-    mapped_column("movie_id", ForeignKey("movies.id"), primary_key=True),
-    mapped_column("star_id", ForeignKey("stars.id"), primary_key=True),
+    Column(
+        "movie_id",
+        ForeignKey("movies.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "star_id",
+        ForeignKey("stars.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
 )
 
+
+# -------------------------
+# Models
+# -------------------------
 
 class Genre(Base):
     __tablename__ = "genres"
@@ -104,15 +139,19 @@ class Movie(Base):
     imdb: Mapped[float] = mapped_column(Float, nullable=False)
     votes: Mapped[int] = mapped_column(Integer, nullable=False)
 
-    meta_score: Mapped[float | None] = mapped_column(Float)
-    gross: Mapped[float | None] = mapped_column(Float)
+    meta_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    gross: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     description: Mapped[str] = mapped_column(Text, nullable=False)
 
-    price: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), nullable=False, default=Decimal("0.00"))
+    price: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+    )
 
     certification_id: Mapped[int] = mapped_column(
-        ForeignKey("certifications.id"),
+        ForeignKey("certifications.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
