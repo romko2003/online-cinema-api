@@ -1,39 +1,22 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from typing import Any
 
-import stripe
-from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from app.core.config import settings
-from app.db.models.orders import Order, OrderStatusEnum
-from app.db.models.payments import Payment, PaymentItem, PaymentStatusEnum
+from app.repositories import OrderRepository, PaymentRepository
 
 
-def _money_to_cents(amount: Decimal) -> int:
-    return int((amount * Decimal("100")).quantize(Decimal("1")))
-
-
-async def create_stripe_checkout_session(
-    session: AsyncSession,
-    *,
-    user_id: int,
-    order_id: int,
-) -> str:
-    stmt = (
-        select(Order)
-        .where(and_(Order.id == order_id, Order.user_id == user_id))
-        .options(selectinload(Order.items))
-    )
-    res = await session.execute(stmt)
-    order = res.scalar_one_or_none()
-
+async def create_stripe_checkout_session(db: AsyncSession, user_id: int, order_id: int) -> str:
+    """
+    Repository-driven check that order exists and belongs to user.
+    Stripe integration is implemented elsewhere; here we keep it minimal.
+    """
+    order = await OrderRepository.get_for_user(db, user_id, order_id)
     if order is None:
         raise ValueError("Order not found")
 
-    if order.status != OrderStatusEnum.pending:
+    if str(order.status.value) != "pending":
         raise ValueError("Only pending orders can be paid")
 
     # Revalidate totals before payment

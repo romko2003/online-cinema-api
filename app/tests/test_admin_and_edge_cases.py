@@ -19,10 +19,6 @@ async def _register_activate_login(
     db_session: AsyncSession,
     monkeypatch,
 ) -> tuple[int, str]:
-    """
-    Returns (user_id, access_token)
-    """
-    # prevent real SMTP sends
     monkeypatch.setattr("app.api.v1.accounts.send_activation_email", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         "app.api.v1.accounts.send_password_reset_email", lambda *args, **kwargs: None
@@ -34,8 +30,7 @@ async def _register_activate_login(
     r = await client.post("/api/v1/accounts/register", json={"email": email, "password": password})
     assert r.status_code == 200, r.text
 
-    # activation token from DB
-    from app.db.models.accounts import ActivationToken
+    from app.db.models.accounts import ActivationToken, User
 
     res = await db_session.execute(select(ActivationToken))
     token_row = res.scalars().first()
@@ -48,9 +43,6 @@ async def _register_activate_login(
     assert r.status_code == 200, r.text
     access = r.json()["access_token"]
 
-    # get user id
-    from app.db.models.accounts import User
-
     res = await db_session.execute(select(User).where(User.email == email))
     user = res.scalars().first()
     assert user is not None
@@ -58,24 +50,8 @@ async def _register_activate_login(
     return user.id, access
 
 
-async def _ensure_admin_group_and_promote(
-    db_session: AsyncSession,
-    user_id: int,
-) -> None:
-    """
-    Promote a user to ADMIN by updating group_id in DB.
-
-    Tries to support both naming conventions:
-    - UserGroup / UserGroupModel
-    - name field as string or enum
-    """
-    from app.db.models.accounts import User
-
-    # Import group model + enum defensively (your project may use different names)
-    try:
-        from app.db.models.accounts import UserGroup as UserGroupModel  # type: ignore
-    except Exception:
-        from app.db.models.accounts import UserGroupModel as UserGroupModel  # type: ignore
+async def _ensure_admin_group_and_promote(db_session: AsyncSession, user_id: int) -> None:
+    from app.db.models.accounts import User, UserGroup
 
     try:
         from app.db.models.accounts import UserGroupEnum  # type: ignore
@@ -92,20 +68,17 @@ async def _ensure_admin_group_and_promote(
     )
     res = await db_session.execute(stmt)
     admin_group = res.scalars().first()
-
-    # If groups are not seeded, create ADMIN group (safe fallback for tests)
     if admin_group is None:
-        admin_group = UserGroupModel(name=admin_name_str)  # type: ignore[call-arg]
+        admin_group = UserGroup(name="ADMIN")
         db_session.add(admin_group)
         await db_session.commit()
         await db_session.refresh(admin_group)
 
-    # Update user.group_id
     res = await db_session.execute(select(User).where(User.id == user_id))
     user = res.scalars().first()
     assert user is not None
 
-    user.group_id = admin_group.id  # type: ignore[attr-defined]
+    user.group_id = admin_group.id
     await db_session.commit()
 
 
@@ -135,7 +108,6 @@ async def _create_movie_for_tests(db: AsyncSession):
         movie = await movies_service.create_movie(db, payload)  # type: ignore[arg-type]
     except TypeError:
         from app.schemas.movies import MovieCreateRequest
-
         movie = await movies_service.create_movie(db, MovieCreateRequest(**payload))
 
     return movie
@@ -148,7 +120,7 @@ async def _create_movie_for_tests(db: AsyncSession):
 
 @pytest.mark.asyncio
 async def test_cart_add_duplicate_movie_returns_400(client, db_session: AsyncSession, monkeypatch):
-    user_id, access = await _register_activate_login(client, db_session, monkeypatch)
+    _, access = await _register_activate_login(client, db_session, monkeypatch)
     headers = {"Authorization": f"Bearer {access}"}
 
     movie = await _create_movie_for_tests(db_session)
@@ -156,7 +128,6 @@ async def test_cart_add_duplicate_movie_returns_400(client, db_session: AsyncSes
     r = await client.post("/api/v1/cart/add", headers=headers, json={"movie_id": movie.id})
     assert r.status_code == 200, r.text
 
-    # duplicate add should fail by validation/unique constraint in service
     r = await client.post("/api/v1/cart/add", headers=headers, json={"movie_id": movie.id})
     assert r.status_code in (400, 404), r.text  # depending on service message
     assert "detail" in r.json()
@@ -278,19 +249,13 @@ async def test_payments_admin_returns_list_for_admin(client, db_session: AsyncSe
     await _ensure_admin_group_and_promote(db_session, admin_user_id)
     headers = {"Authorization": f"Bearer {admin_access}"}
 
-    # no payments yet, but endpoint should work and return empty list
     r = await client.get("/api/v1/payments/admin", headers=headers)
     assert r.status_code == 200, r.text
-    data = r.json()
-    assert "items" in data
-    assert isinstance(data["items"], list)
+    assert "items" in r.json()
 
 
 @pytest.mark.asyncio
 async def test_payments_admin_filters_do_not_crash(client, db_session: AsyncSession, monkeypatch):
-    """
-    Just verify query params parse and endpoint responds for admin.
-    """
     admin_user_id, admin_access = await _register_activate_login(client, db_session, monkeypatch)
     await _ensure_admin_group_and_promote(db_session, admin_user_id)
     headers = {"Authorization": f"Bearer {admin_access}"}

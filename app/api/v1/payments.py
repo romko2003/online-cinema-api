@@ -17,6 +17,7 @@ from app.schemas.payments import (
     CreateCheckoutSessionResponse,
     PaymentItemResponse,
     PaymentResponse,
+    PaymentsAdminQuery,
     PaymentsListResponse,
 )
 from app.services import payments as payments_service
@@ -73,10 +74,7 @@ def _to_response(p: Payment) -> PaymentResponse:
         status=p.status.value,
         amount=p.amount,
         external_payment_id=p.external_payment_id,
-        items=[
-            PaymentItemResponse(order_item_id=i.order_item_id, price_at_payment=i.price_at_payment)
-            for i in p.items
-        ],
+        items=[PaymentItemResponse(order_item_id=i.order_item_id, price_at_payment=i.price_at_payment) for i in p.items],
     )
 
 
@@ -98,26 +96,23 @@ async def list_my_payments(
 
 @router.get("/admin", response_model=PaymentsListResponse)
 async def list_payments_admin(
-    user_id: int | None = None,
-    status_filter: Literal["successful", "canceled", "refunded"] | None = None,
-    date_from: str | None = None,
-    date_to: str | None = None,
+    query: PaymentsAdminQuery = Depends(),
     _admin=Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> PaymentsListResponse:
     conditions = []
 
-    if user_id is not None:
-        conditions.append(Payment.user_id == user_id)
+    if query.user_id is not None:
+        conditions.append(Payment.user_id == query.user_id)
 
-    if status_filter is not None:
-        conditions.append(Payment.status == status_filter)
+    if query.status_filter is not None:
+        conditions.append(Payment.status == query.status_filter)
 
-    if date_from:
-        conditions.append(Payment.created_at >= datetime.fromisoformat(date_from))
+    if query.date_from:
+        conditions.append(Payment.created_at >= datetime.fromisoformat(query.date_from))
 
-    if date_to:
-        conditions.append(Payment.created_at <= datetime.fromisoformat(date_to))
+    if query.date_to:
+        conditions.append(Payment.created_at <= datetime.fromisoformat(query.date_to))
 
     stmt = select(Payment).order_by(Payment.created_at.desc()).options(selectinload(Payment.items))
     if conditions:
