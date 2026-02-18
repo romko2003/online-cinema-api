@@ -1,48 +1,11 @@
 from __future__ import annotations
 
-import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import bcrypt
 from jose import JWTError, jwt
 
 from app.core.config import settings
-
-_PASSWORD_RULES = (
-    "Password must be at least 8 characters long and include: "
-    "1 uppercase letter, 1 lowercase letter, 1 digit, 1 special character."
-)
-
-
-def validate_password_complexity(password: str) -> None:
-    """
-    Enforces basic password complexity:
-    - min 8 chars
-    - at least 1 uppercase, 1 lowercase, 1 digit, 1 special
-    """
-    if len(password) < 8:
-        raise ValueError(_PASSWORD_RULES)
-
-    if not re.search(r"[A-Z]", password):
-        raise ValueError(_PASSWORD_RULES)
-
-    if not re.search(r"[a-z]", password):
-        raise ValueError(_PASSWORD_RULES)
-
-    if not re.search(r"\d", password):
-        raise ValueError(_PASSWORD_RULES)
-
-    if not re.search(r"[^\w\s]", password):
-        raise ValueError(_PASSWORD_RULES)
-
-
-def hash_password(password: str) -> str:
-    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-
-
-def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode(), hashed.encode())
 
 
 def _utcnow() -> datetime:
