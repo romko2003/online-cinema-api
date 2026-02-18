@@ -17,6 +17,7 @@ asgiref==3.9.1
 asttokens==3.0.0
 astunparse==1.6.3
 async-lru==2.0.5
+asyncpg
 attrs==25.3.0
 babel==2.17.0
 bcrypt==5.0.0
