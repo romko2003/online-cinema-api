@@ -41,11 +41,28 @@ def create_refresh_token(subject: str) -> tuple[str, datetime]:
 
 def decode_token(token: str) -> dict[str, Any]:
     try:
-        payload = jwt.decode(
+        return jwt.decode(
             token,
             settings.JWT_SECRET_KEY,
             algorithms=[settings.JWT_ALGORITHM],
         )
-        return payload
     except JWTError as e:
         raise ValueError("Invalid token") from e
+
+
+# -------------------------
+# Backwards-compatible API
+# -------------------------
+
+def decode_access_token(token: str) -> dict[str, Any]:
+    payload = decode_token(token)
+    if payload.get("type") != "access":
+        raise ValueError("Invalid token type")
+    return payload
+
+
+def decode_refresh_token(token: str) -> dict[str, Any]:
+    payload = decode_token(token)
+    if payload.get("type") != "refresh":
+        raise ValueError("Invalid token type")
+    return payload
