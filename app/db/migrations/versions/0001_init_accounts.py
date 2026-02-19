@@ -1,5 +1,5 @@
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0001_init_accounts"
 down_revision = None
@@ -11,7 +11,12 @@ def upgrade() -> None:
     op.create_table(
         "user_groups",
         sa.Column("id", sa.Integer(), primary_key=True),
-        sa.Column("name", sa.Enum("USER", "MODERATOR", "ADMIN", name="usergroupenum"), unique=True, nullable=False),
+        sa.Column(
+            "name",
+            sa.Enum("USER", "MODERATOR", "ADMIN", name="usergroupenum"),
+            unique=True,
+            nullable=False,
+        ),
     )
 
     op.create_table(

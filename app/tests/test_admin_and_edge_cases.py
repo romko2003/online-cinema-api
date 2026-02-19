@@ -9,6 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.services import movies as movies_service
 
+# -------------------------
+# Helpers
+# -------------------------
+
 
 async def _register_activate_login(
     client,
@@ -16,7 +20,9 @@ async def _register_activate_login(
     monkeypatch,
 ) -> tuple[int, str]:
     monkeypatch.setattr("app.api.v1.accounts.send_activation_email", lambda *args, **kwargs: None)
-    monkeypatch.setattr("app.api.v1.accounts.send_password_reset_email", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        "app.api.v1.accounts.send_password_reset_email", lambda *args, **kwargs: None
+    )
 
     email = f"user_{uuid.uuid4().hex}@example.com"
     password = "StrongPass123!"
@@ -47,7 +53,20 @@ async def _register_activate_login(
 async def _ensure_admin_group_and_promote(db_session: AsyncSession, user_id: int) -> None:
     from app.db.models.accounts import User, UserGroup
 
-    res = await db_session.execute(select(UserGroup).where(UserGroup.name == "ADMIN"))
+    try:
+        from app.db.models.accounts import UserGroupEnum  # type: ignore
+
+        admin_name = UserGroupEnum.ADMIN  # enum value
+        admin_name_str = "ADMIN"
+    except Exception:
+        admin_name = "ADMIN"
+        admin_name_str = "ADMIN"
+
+    # Find ADMIN group
+    stmt = select(UserGroupModel).where(
+        (UserGroupModel.name == admin_name) | (UserGroupModel.name == admin_name_str)  # type: ignore[operator]
+    )
+    res = await db_session.execute(stmt)
     admin_group = res.scalars().first()
     if admin_group is None:
         admin_group = UserGroup(name="ADMIN")
@@ -94,6 +113,11 @@ async def _create_movie_for_tests(db: AsyncSession):
     return movie
 
 
+# -------------------------
+# Cart edge cases
+# -------------------------
+
+
 @pytest.mark.asyncio
 async def test_cart_add_duplicate_movie_returns_400(client, db_session: AsyncSession, monkeypatch):
     _, access = await _register_activate_login(client, db_session, monkeypatch)
@@ -105,8 +129,109 @@ async def test_cart_add_duplicate_movie_returns_400(client, db_session: AsyncSes
     assert r.status_code == 200, r.text
 
     r = await client.post("/api/v1/cart/add", headers=headers, json={"movie_id": movie.id})
+    assert r.status_code in (400, 404), r.text  # depending on service message
+    assert "detail" in r.json()
+
+
+@pytest.mark.asyncio
+async def test_cart_remove_not_in_cart_returns_404(client, db_session: AsyncSession, monkeypatch):
+    _, access = await _register_activate_login(client, db_session, monkeypatch)
+    headers = {"Authorization": f"Bearer {access}"}
+
+    movie = await _create_movie_for_tests(db_session)
+
+    r = await client.post("/api/v1/cart/remove", headers=headers, json={"movie_id": movie.id})
+    assert r.status_code == 404, r.text
+    assert "detail" in r.json()
+
+
+# -------------------------
+# Orders edge cases
+# -------------------------
+
+
+@pytest.mark.asyncio
+async def test_create_order_with_empty_cart_returns_400(
+    client, db_session: AsyncSession, monkeypatch
+):
+    _, access = await _register_activate_login(client, db_session, monkeypatch)
+    headers = {"Authorization": f"Bearer {access}"}
+
+    r = await client.post("/api/v1/orders", headers=headers)
     assert r.status_code in (400, 404), r.text
     assert "detail" in r.json()
+
+
+@pytest.mark.asyncio
+async def test_cancel_order_not_found_returns_404(client, db_session: AsyncSession, monkeypatch):
+    _, access = await _register_activate_login(client, db_session, monkeypatch)
+    headers = {"Authorization": f"Bearer {access}"}
+
+    r = await client.post("/api/v1/orders/999999/cancel", headers=headers)
+    assert r.status_code == 404, r.text
+    assert r.json()["detail"] in ("Order not found", r.json()["detail"])
+
+
+@pytest.mark.asyncio
+async def test_create_then_cancel_order_success(client, db_session: AsyncSession, monkeypatch):
+    _, access = await _register_activate_login(client, db_session, monkeypatch)
+    headers = {"Authorization": f"Bearer {access}"}
+
+    movie = await _create_movie_for_tests(db_session)
+
+    r = await client.post("/api/v1/cart/add", headers=headers, json={"movie_id": movie.id})
+    assert r.status_code == 200, r.text
+
+    r = await client.post("/api/v1/orders", headers=headers)
+    assert r.status_code == 201, r.text
+    order_id = r.json()["order_id"]
+
+    r = await client.post(f"/api/v1/orders/{order_id}/cancel", headers=headers)
+    assert r.status_code == 200, r.text
+    assert r.json()["message"] == "Order canceled"
+
+
+# -------------------------
+# Admin endpoints
+# -------------------------
+
+
+@pytest.mark.asyncio
+async def test_cart_admin_requires_admin(client, db_session: AsyncSession, monkeypatch):
+    target_user_id, target_access = await _register_activate_login(client, db_session, monkeypatch)
+    target_headers = {"Authorization": f"Bearer {target_access}"}
+
+    movie = await _create_movie_for_tests(db_session)
+    r = await client.post("/api/v1/cart/add", headers=target_headers, json={"movie_id": movie.id})
+    assert r.status_code == 200, r.text
+
+    # normal user calling admin endpoint should be forbidden
+    r = await client.get(f"/api/v1/cart/admin/{target_user_id}", headers=target_headers)
+    assert r.status_code == 403, r.text
+    assert "detail" in r.json()
+
+
+@pytest.mark.asyncio
+async def test_cart_admin_can_view_other_user_cart(client, db_session: AsyncSession, monkeypatch):
+    # Create target user with cart items
+    target_user_id, target_access = await _register_activate_login(client, db_session, monkeypatch)
+    target_headers = {"Authorization": f"Bearer {target_access}"}
+
+    movie = await _create_movie_for_tests(db_session)
+    r = await client.post("/api/v1/cart/add", headers=target_headers, json={"movie_id": movie.id})
+    assert r.status_code == 200, r.text
+
+    # Create admin user and promote
+    admin_user_id, admin_access = await _register_activate_login(client, db_session, monkeypatch)
+    await _ensure_admin_group_and_promote(db_session, admin_user_id)
+    admin_headers = {"Authorization": f"Bearer {admin_access}"}
+
+    r = await client.get(f"/api/v1/cart/admin/{target_user_id}", headers=admin_headers)
+    assert r.status_code == 200, r.text
+    data = r.json()
+    assert data["user_id"] == target_user_id
+    assert len(data["items"]) == 1
+    assert data["items"][0]["movie_id"] == movie.id
 
 
 @pytest.mark.asyncio

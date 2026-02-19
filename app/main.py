@@ -95,6 +95,7 @@ def _build_openapi_schema() -> dict:
 # Protected OpenAPI schema
 # -------------------------
 
+
 @app.get("/openapi.json", include_in_schema=False)
 async def openapi_json(_=Depends(get_current_user)) -> JSONResponse:
     return JSONResponse(_build_openapi_schema())
@@ -103,6 +104,7 @@ async def openapi_json(_=Depends(get_current_user)) -> JSONResponse:
 # -------------------------
 # Protected Swagger UI / ReDoc
 # -------------------------
+
 
 @app.get("/docs", include_in_schema=False)
 async def swagger_ui(_=Depends(get_current_user)) -> Response:

@@ -1,5 +1,5 @@
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0002_activation_tokens"
 down_revision = "0001_init_accounts"

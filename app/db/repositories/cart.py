@@ -8,11 +8,7 @@ from app.db.models.cart import Cart, CartItem
 
 
 async def get_cart_by_user_id(session: AsyncSession, user_id: int) -> Cart | None:
-    stmt = (
-        select(Cart)
-        .where(Cart.user_id == user_id)
-        .options(selectinload(Cart.items))
-    )
+    stmt = select(Cart).where(Cart.user_id == user_id).options(selectinload(Cart.items))
     res = await session.execute(stmt)
     return res.scalar_one_or_none()
 
