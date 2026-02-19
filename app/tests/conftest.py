@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 
 import pytest
 from httpx import AsyncClient
@@ -39,7 +39,9 @@ def session_factory(engine) -> async_sessionmaker[AsyncSession]:
 
 
 @pytest.fixture()
-async def db_session(session_factory: async_sessionmaker[AsyncSession]) -> AsyncGenerator[AsyncSession, None]:
+async def db_session(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncGenerator[AsyncSession, None]:
     async with session_factory() as session:
         # Clean DB BEFORE each test for isolation
         await truncate_all_tables(session)
@@ -53,6 +55,7 @@ async def client(db_session: AsyncSession) -> AsyncGenerator[AsyncClient, None]:
     """
     Test client with dependency override for DB session.
     """
+
     async def _get_test_db() -> AsyncGenerator[AsyncSession, None]:
         yield db_session
 

@@ -9,7 +9,6 @@ from sqlalchemy.orm import selectinload
 
 from app.db.models.movies import Certification, Director, Genre, Movie, Star
 
-
 SortField = Literal["price", "year", "imdb", "votes"]
 SortOrder = Literal["asc", "desc"]
 
@@ -63,10 +62,7 @@ async def list_movies(
     if certification_id is not None:
         filters.append(Movie.certification_id == certification_id)
 
-    stmt = (
-        select(Movie)
-        .options(selectinload(Movie.certification))
-    )
+    stmt = select(Movie).options(selectinload(Movie.certification))
 
     if filters:
         stmt = stmt.where(*filters)
@@ -106,7 +102,9 @@ async def list_movies(
     return total, items
 
 
-async def create_entity(session: AsyncSession, entity: Genre | Star | Director | Certification) -> None:
+async def create_entity(
+    session: AsyncSession, entity: Genre | Star | Director | Certification
+) -> None:
     session.add(entity)
     await session.commit()
 

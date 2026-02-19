@@ -1,15 +1,20 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.db.models.accounts import User
-from app.db.session import get_db
-from app.schemas.orders import CreateOrderResponse, OrderItemResponse, OrderResponse, OrdersListResponse
-from app.services import orders as orders_service
 from app.db.models.movies import Movie
+from app.db.session import get_db
+from app.schemas.orders import (
+    CreateOrderResponse,
+    OrderItemResponse,
+    OrderResponse,
+    OrdersListResponse,
+)
+from app.services import orders as orders_service
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -71,8 +76,12 @@ async def list_my_orders(
                 items=[
                     OrderItemResponse(
                         movie_id=i.movie_id,
-                        movie_uuid=movies_by_id[i.movie_id].uuid if i.movie_id in movies_by_id else None,  # type: ignore[arg-type]
-                        title=movies_by_id[i.movie_id].name if i.movie_id in movies_by_id else "Unknown",
+                        movie_uuid=movies_by_id[i.movie_id].uuid
+                        if i.movie_id in movies_by_id
+                        else None,  # type: ignore[arg-type]
+                        title=movies_by_id[i.movie_id].name
+                        if i.movie_id in movies_by_id
+                        else "Unknown",
                         price_at_order=i.price_at_order,
                     )
                     for i in o.items

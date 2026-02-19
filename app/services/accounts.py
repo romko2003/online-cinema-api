@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,9 +118,7 @@ async def login_user(session: AsyncSession, email: str, password: str) -> tuple[
 
 
 async def refresh_access_token(session: AsyncSession, refresh_token: str) -> tuple[str, str]:
-    result = await session.execute(
-        select(RefreshToken).where(RefreshToken.token == refresh_token)
-    )
+    result = await session.execute(select(RefreshToken).where(RefreshToken.token == refresh_token))
     stored = result.scalar_one_or_none()
     if stored is None:
         raise ValueError("Invalid refresh token")
@@ -186,9 +184,7 @@ async def request_password_reset(session: AsyncSession, email: str) -> str | Non
         return None
 
     # invalidate previous token (unique by user_id)
-    await session.execute(
-        delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
-    )
+    await session.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))
     await session.flush()
 
     token_str = secrets.token_urlsafe(32)

@@ -1,5 +1,5 @@
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "0006_cart_schema"
 down_revision = "0005_movies_schema"

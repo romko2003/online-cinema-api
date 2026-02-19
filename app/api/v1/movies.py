@@ -15,11 +15,8 @@ from app.schemas.movies import (
     DirectorResponse,
     GenreBase,
     GenreResponse,
-    MovieCreateRequest,
     MovieDetailResponse,
     MovieShortResponse,
-    MoviesListQuery,
-    MovieUpdateRequest,
     PaginatedMoviesResponse,
     StarBase,
     StarResponse,
@@ -33,25 +30,30 @@ router = APIRouter(prefix="/movies", tags=["Movies"])
 # Public catalog endpoints
 # -------------------------
 
-@router.get("", response_model=PaginatedMoviesResponse)
+
+@router.get(
+    "",
+    response_model=PaginatedMoviesResponse,
+    summary="Browse movie catalog",
+)
 async def list_movies(
     query: MoviesListQuery = Depends(),
     db: AsyncSession = Depends(get_db),
 ) -> PaginatedMoviesResponse:
     total, items = await movies_service.list_movies(
         db,
-        page=query.page,
-        page_size=query.page_size,
-        q=query.q,
-        year=query.year,
-        imdb_min=query.imdb_min,
-        imdb_max=query.imdb_max,
-        certification_id=query.certification_id,
-        genre_id=query.genre_id,
-        director_id=query.director_id,
-        star_id=query.star_id,
-        sort_by=query.sort_by,
-        order=query.order,
+        page=page,
+        page_size=page_size,
+        q=q,
+        year=year,
+        imdb_min=imdb_min,
+        imdb_max=imdb_max,
+        certification_id=certification_id,
+        genre_id=genre_id,
+        director_id=director_id,
+        star_id=star_id,
+        sort_by=sort_by,  # type: ignore[arg-type]
+        order=order,  # type: ignore[arg-type]
     )
 
     return PaginatedMoviesResponse(
@@ -103,7 +105,13 @@ async def get_movie(movie_uuid: UUID, db: AsyncSession = Depends(get_db)) -> Mov
 # Moderator CRUD endpoints
 # -------------------------
 
-@router.post("/genres", response_model=GenreResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post(
+    "/genres",
+    response_model=GenreResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a new genre (moderator only)",
+)
 async def create_genre(
     payload: GenreBase,
     db: AsyncSession = Depends(get_db),
