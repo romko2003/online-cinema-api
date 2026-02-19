@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid as uuid_lib
 from decimal import Decimal
 
+import sqlalchemy as sa
 from sqlalchemy import (
     DECIMAL,
     Float,
@@ -18,26 +19,27 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
-
+# IMPORTANT:
+# Table(...) expects sqlalchemy.Column, NOT mapped_column.
 movie_genres = Table(
     "movie_genres",
     Base.metadata,
-    mapped_column("movie_id", ForeignKey("movies.id"), primary_key=True),
-    mapped_column("genre_id", ForeignKey("genres.id"), primary_key=True),
+    sa.Column("movie_id", sa.ForeignKey("movies.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("genre_id", sa.ForeignKey("genres.id", ondelete="CASCADE"), primary_key=True),
 )
 
 movie_directors = Table(
     "movie_directors",
     Base.metadata,
-    mapped_column("movie_id", ForeignKey("movies.id"), primary_key=True),
-    mapped_column("director_id", ForeignKey("directors.id"), primary_key=True),
+    sa.Column("movie_id", sa.ForeignKey("movies.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("director_id", sa.ForeignKey("directors.id", ondelete="CASCADE"), primary_key=True),
 )
 
 movie_stars = Table(
     "movie_stars",
     Base.metadata,
-    mapped_column("movie_id", ForeignKey("movies.id"), primary_key=True),
-    mapped_column("star_id", ForeignKey("stars.id"), primary_key=True),
+    sa.Column("movie_id", sa.ForeignKey("movies.id", ondelete="CASCADE"), primary_key=True),
+    sa.Column("star_id", sa.ForeignKey("stars.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -93,6 +95,7 @@ class Movie(Base):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
     uuid: Mapped[uuid_lib.UUID] = mapped_column(
         UUID(as_uuid=True),
         unique=True,
@@ -112,10 +115,14 @@ class Movie(Base):
 
     description: Mapped[str] = mapped_column(Text, nullable=False)
 
-    price: Mapped[Decimal] = mapped_column(DECIMAL(10, 2), nullable=False, default=Decimal("0.00"))
+    price: Mapped[Decimal] = mapped_column(
+        DECIMAL(10, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+    )
 
     certification_id: Mapped[int] = mapped_column(
-        ForeignKey("certifications.id"),
+        ForeignKey("certifications.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
